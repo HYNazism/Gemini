@@ -29,7 +29,9 @@ jobs:
       - name: Detect Project Root or Subfolder
         id: project_dir
         run: |
-          if [ -f "sproutling-android-release/package.json" ]; then
+          if [ -f "HYNAction1/package.json" ]; then
+            echo "dir=HYNAction1" >> "$GITHUB_OUTPUT"
+          elif [ -f "sproutling-android-release/package.json" ]; then
             echo "dir=sproutling-android-release" >> "$GITHUB_OUTPUT"
           else
             echo "dir=." >> "$GITHUB_OUTPUT"
