@@ -1,9 +1,9 @@
 /**
  * Google Play AdMob Configuration, Live Ad Overlay Simulator, PWA Installer,
- * and GitHub / Android APK Build Manager.
+ * and Automated Git Revisioning / GitHub Subfolder & Android APK Build Manager.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   X,
   Smartphone,
@@ -16,9 +16,25 @@ import {
   Copy,
   Check,
   Gift,
+  GitBranch,
+  FolderGit2,
+  UploadCloud,
 } from 'lucide-react';
 import { admob, type AdMobConfig, type ActiveAdOverlay } from '../game/admob';
 import { usePWAInstall } from '../hooks/usePWAInstall';
+
+interface GitStatusInfo {
+  commitHash: string;
+  commitCount: number;
+  versionTag: string;
+  nextVersionTag: string;
+  lastCommitMsg: string;
+  lastCommitTime: string;
+  subfolder: string;
+  repoName: string;
+  hasGithubToken: boolean;
+  githubUser: string;
+}
 
 interface ReleaseAndAdsModalProps {
   isOpen: boolean;
@@ -37,12 +53,40 @@ export const ReleaseAndAdsModal: React.FC<ReleaseAndAdsModalProps> = ({
   const [activeTab, setActiveTab] = useState<'admob' | 'apk'>('admob');
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
 
+  const [gitStatus, setGitStatus] = useState<GitStatusInfo | null>(null);
+  const [repoName, setRepoName] = useState('sproutling-grove-guardian-3d');
+  const [subfolder, setSubfolder] = useState('sproutling-android-release');
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishResult, setPublishResult] = useState<{
+    ok: boolean;
+    message: string;
+    repoUrl?: string;
+    subfolderUrl?: string;
+    releasesUrl?: string;
+  } | null>(null);
+
+  const fetchGitStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/github/status');
+      if (res.ok) {
+        const data = (await res.json()) as GitStatusInfo;
+        setGitStatus(data);
+        if (data.repoName) setRepoName(data.repoName);
+        if (data.subfolder) setSubfolder(data.subfolder);
+      }
+    } catch {
+      // ignore offline or static preview
+    }
+  }, []);
+
   useEffect(() => {
     if (isOpen) {
       setConfig(admob.getConfig());
       setStatusMsg(null);
+      setPublishResult(null);
+      fetchGitStatus();
     }
-  }, [isOpen]);
+  }, [isOpen, fetchGitStatus]);
 
   if (!isOpen) return null;
 
@@ -75,15 +119,51 @@ export const ReleaseAndAdsModal: React.FC<ReleaseAndAdsModalProps> = ({
     });
   };
 
+  const handleSyncAndPublishGitHub = async () => {
+    setIsPublishing(true);
+    setPublishResult(null);
+    try {
+      const res = await fetch('/api/github/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repoName,
+          subfolder,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setPublishResult({
+          ok: true,
+          message: data.message,
+          repoUrl: data.repoUrl,
+          subfolderUrl: data.subfolderUrl,
+          releasesUrl: data.releasesUrl,
+        });
+        if (data.status) setGitStatus(data.status);
+      } else {
+        setPublishResult({
+          ok: false,
+          message: data.error || 'خطا در همگام‌سازی و انتشار گیت‌هاب',
+        });
+      }
+    } catch {
+      setPublishResult({
+        ok: false,
+        message: 'خطا در ارتباط با سرور محلی Git',
+      });
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
   const handleCopyBuildCommands = () => {
     const cmds = [
-      '# 1. Push to GitHub to trigger .github/workflows/android-apk-release.yml automatically, OR run locally:',
-      'npm install',
-      'npm run build',
-      'npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor-community/admob',
-      'npx cap add android',
-      'npx cap sync android',
-      'cd android && ./gradlew assembleDebug bundleRelease',
+      `# Sync subfolder (${subfolder}), commit new version tag, and push to GitHub (${repoName}):`,
+      `bash ./${subfolder}/sync-and-publish-github.sh`,
+      '',
+      '# Or build APK & Google Play AAB locally:',
+      `bash ./${subfolder}/build-android-apk.sh`,
     ].join('\n');
     navigator.clipboard?.writeText(cmds);
     setCopiedCmd(true);
@@ -105,10 +185,15 @@ export const ReleaseAndAdsModal: React.FC<ReleaseAndAdsModalProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
-                Android APK · Google Play & AdMob
+                Android APK · GitHub Subfolder & AdMob
               </h2>
               <p className="text-[11px] text-[#95d5b2]">
                 Publisher Account: <span className="font-mono text-[#ffd166]">{config.publisherEmail}</span>
+                {gitStatus && (
+                  <span className="ml-2 px-2 py-0.5 rounded bg-[#0f281e] text-[#06d6a0] font-mono text-[10px]">
+                    {gitStatus.versionTag} ({gitStatus.commitHash})
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -144,7 +229,7 @@ export const ReleaseAndAdsModal: React.FC<ReleaseAndAdsModalProps> = ({
                 : 'text-[#95d5b2] hover:text-white'
             }`}
           >
-            ۲. خروجی APK / GitHub / Play
+            ۲. انتشار GitHub / Subfolder / APK
           </button>
         </div>
 
@@ -288,6 +373,80 @@ export const ReleaseAndAdsModal: React.FC<ReleaseAndAdsModalProps> = ({
           </form>
         ) : (
           <div className="flex flex-col gap-3 text-xs">
+            {/* GitHub Project & Subfolder Auto-Revisioning Section */}
+            <div className="bg-[#0f281e] p-3.5 rounded-xl border border-[#2d6a4f] flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FolderGit2 className="w-4 h-4 text-[#ffd166]" />
+                  <span className="font-bold text-white text-sm">
+                    مدیریت پروژه، زیرپوشه (Subfolder) و نسخه‌بندی خودکار Git
+                  </span>
+                </div>
+                {gitStatus && (
+                  <span className="px-2.5 py-1 rounded-lg bg-[#1b4332] border border-[#52b788]/50 text-[#06d6a0] font-mono text-[11px] flex items-center gap-1">
+                    <GitBranch className="w-3 h-3" />
+                    {gitStatus.versionTag} · #{gitStatus.commitCount}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[10px] font-bold text-[#95d5b2] uppercase mb-1">
+                    GitHub Repository Name
+                  </label>
+                  <input
+                    type="text"
+                    value={repoName}
+                    onChange={(e) => setRepoName(e.target.value)}
+                    className="w-full bg-[#07130c] border border-[#40916c] rounded-lg px-2.5 py-1.5 text-white font-mono text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-[#95d5b2] uppercase mb-1">
+                    Project Subfolder in GitHub
+                  </label>
+                  <input
+                    type="text"
+                    value={subfolder}
+                    onChange={(e) => setSubfolder(e.target.value)}
+                    className="w-full bg-[#07130c] border border-[#40916c] rounded-lg px-2.5 py-1.5 text-white font-mono text-xs"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="button"
+                disabled={isPublishing}
+                onClick={handleSyncAndPublishGitHub}
+                className="w-full py-2.5 bg-[#52b788] hover:bg-[#74c69d] disabled:opacity-50 text-[#081c15] font-black rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md"
+              >
+                <UploadCloud className="w-4 h-4" />
+                <span>
+                  {isPublishing
+                    ? 'در حال همگام‌سازی زیرپوشه و ثبت نسخه جدید...'
+                    : `همگام‌سازی زیرپوشه (/${subfolder})، ثبت تگ نسخه جدید و انتشار در GitHub`}
+                </span>
+              </button>
+
+              {publishResult && (
+                <div
+                  className={`p-2.5 rounded-xl text-[11px] leading-relaxed border ${
+                    publishResult.ok
+                      ? 'bg-[#06d6a0]/15 border-[#06d6a0]/40 text-[#d8f3dc]'
+                      : 'bg-red-500/20 border-red-400/40 text-red-200'
+                  }`}
+                >
+                  <p className="font-bold">{publishResult.message}</p>
+                  {publishResult.repoUrl && (
+                    <p className="mt-1 font-mono text-[10px] text-[#ffd166]">
+                      Repository: {publishResult.repoUrl} | Subfolder: {publishResult.subfolderUrl}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Option 1: Instant PWA Install on Android */}
             <div className="bg-[#0f281e] p-3.5 rounded-xl border border-[#2d6a4f] flex items-center justify-between gap-3">
               <div>
@@ -295,7 +454,7 @@ export const ReleaseAndAdsModal: React.FC<ReleaseAndAdsModalProps> = ({
                   نصب مستقیم روی اندروید (PWA / Fullscreen Offline)
                 </h3>
                 <p className="text-[11px] text-[#95d5b2] mt-0.5">
-                  واجد شرایط کامل Service Worker، آیکون‌های Maskable و اجرای آفلاین ۶۰ فریم.
+                  اجرای ۱۰۰٪ آفلاین بدون نیاز به اینترنت و حالت Eco برای گوشی‌های قدیمی و ضعیف.
                 </p>
               </div>
               {isInstalled ? (
@@ -322,7 +481,7 @@ export const ReleaseAndAdsModal: React.FC<ReleaseAndAdsModalProps> = ({
             <div className="bg-[#0f281e] p-3.5 rounded-xl border border-[#2d6a4f] flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-[#ffd166]">
-                  فایل‌های آماده شده در مخزن برای GitHub و Google Play:
+                  اسکریپت‌های آماده در زیرپوشه <code>./{subfolder}/</code>:
                 </span>
                 <button
                   type="button"
@@ -330,25 +489,16 @@ export const ReleaseAndAdsModal: React.FC<ReleaseAndAdsModalProps> = ({
                   className="px-2.5 py-1 bg-[#2d6a4f] hover:bg-[#40916c] text-white rounded-lg flex items-center gap-1 text-[11px] cursor-pointer"
                 >
                   {copiedCmd ? <Check className="w-3.5 h-3.5 text-[#06d6a0]" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedCmd ? 'کپی شد' : 'کپی دستورات بیلد'}</span>
+                  <span>{copiedCmd ? 'کپی شد' : 'کپی دستورات'}</span>
                 </button>
               </div>
 
-              <ul className="list-disc list-inside text-[11px] text-[#d8f3dc] space-y-1">
-                <li>
-                  <code className="text-[#ffd166]">capacitor.config.ts</code>: پیکربندی کامل پکیج{' '}
-                  <code>{config.packageName}</code> و پلاگین رسمی <code>@capacitor-community/admob</code>.
-                </li>
-                <li>
-                  <code className="text-[#ffd166]">.github/workflows/android-apk-release.yml</code>: پایپ‌لاین خودکار GitHub Actions که به محض Push شدن کد در گیت‌هاب، فایل‌های{' '}
-                  <code>app-debug.apk</code> و <code>app-release.aab</code> را کامپایل و در بخش Artifacts آماده دانلود می‌کند.
-                </li>
-              </ul>
-
               <pre className="bg-[#07130c] p-2.5 rounded-lg text-[10px] font-mono text-[#95d5b2] overflow-x-auto">
-{`npm run build
-npx cap add android && npx cap sync android
-cd android && ./gradlew assembleDebug bundleRelease`}
+{`# کامیت نسخه جدید و انتشار در زیرپوشه گیت‌هاب:
+bash ./${subfolder}/sync-and-publish-github.sh
+
+# کامپایل محلی فایل‌های APK و AAB:
+bash ./${subfolder}/build-android-apk.sh`}
               </pre>
             </div>
           </div>

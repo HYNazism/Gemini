@@ -1,0 +1,274 @@
+/**
+ * Status Modals: Paused, Victory (Infinite Chapter Progression), and Game Over (Online-Only Ad Revive).
+ */
+
+import React from 'react';
+import {
+  Play,
+  RotateCcw,
+  Volume2,
+  VolumeX,
+  Trophy,
+  Sparkles,
+  AlertCircle,
+  Star,
+  Gift,
+  User,
+  Smartphone,
+} from 'lucide-react';
+import type { HUDData } from '../game/engine';
+import { admob } from '../game/admob';
+import { generateChapterInfo } from '../game/rules';
+
+interface StatusModalsProps {
+  data: HUDData;
+  onResume: () => void;
+  onRestart: () => void;
+  onNextChapter: () => void;
+  onReviveWithAd: () => void;
+  onToggleMute: () => void;
+  onOpenCustomize: () => void;
+  onOpenAdMobAndApk: () => void;
+}
+
+export const StatusModals: React.FC<StatusModalsProps> = ({
+  data,
+  onResume,
+  onRestart,
+  onNextChapter,
+  onReviveWithAd,
+  onToggleMute,
+  onOpenCustomize,
+  onOpenAdMobAndApk,
+}) => {
+  const {
+    gameState,
+    finalSummary,
+    player,
+    restoredShrines,
+    totalShrines,
+    cleansedEnemiesCount,
+    isMuted,
+    chapterInfo,
+  } = data;
+
+  if (gameState === 'title' || gameState === 'playing') {
+    return null;
+  }
+
+  const isOnline = admob.isOnline();
+  const nextChapter = generateChapterInfo(chapterInfo.chapterNumber + 1);
+
+  return (
+    <div className="absolute inset-0 z-40 bg-[#0d1f12]/80 flex items-center justify-center p-4 select-none pointer-events-auto">
+      {/* 1. PAUSED MODAL */}
+      {gameState === 'paused' && (
+        <div className="w-full max-w-sm bg-[#1b4332] border-2 border-[#52b788] rounded-3xl p-6 sm:p-7 shadow-2xl text-center flex flex-col items-center">
+          <div className="w-12 h-12 rounded-2xl bg-[#2d6a4f] border border-[#709775] flex items-center justify-center mb-3 shadow-inner">
+            <span className="text-2xl">🌿</span>
+          </div>
+
+          <h2 className="text-2xl font-black text-[#d8f3dc] tracking-tight mb-1">
+            {chapterInfo.title}
+          </h2>
+          <p className="text-xs text-[#95d5b2] mb-5">
+            Take a breath, Sproutling. The grove awaits your return.
+          </p>
+
+          <div className="w-full flex flex-col gap-2.5">
+            <button
+              onClick={onResume}
+              aria-label="Resume Game"
+              className="w-full py-3 bg-gradient-to-r from-[#80b918] to-[#55a630] text-[#081c15] font-black text-sm tracking-wider rounded-xl shadow-md border border-white/40 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Play className="w-4 h-4 fill-current" />
+              <span>RESUME ADVENTURE</span>
+            </button>
+
+            <button
+              onClick={onOpenCustomize}
+              aria-label="Customize Hero and Sanctuary"
+              className="w-full py-2.5 bg-[#2d6a4f] hover:bg-[#40916c] text-[#e9f5db] font-bold text-xs tracking-wider rounded-xl border border-[#709775]/50 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <User className="w-4 h-4 text-[#ffd166]" />
+              <span>HERO, SANCTUARY & FPS</span>
+            </button>
+
+            <button
+              onClick={onOpenAdMobAndApk}
+              aria-label="Open Android APK and AdMob Settings"
+              className="w-full py-2.5 bg-[#2d6a4f] hover:bg-[#40916c] text-[#ffd166] font-bold text-xs tracking-wider rounded-xl border border-[#ffd166]/40 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Smartphone className="w-4 h-4" />
+              <span>ANDROID APK & ADMOB</span>
+            </button>
+
+            <button
+              onClick={onRestart}
+              aria-label="Restart Chapter"
+              className="w-full py-2.5 bg-[#0f281e] hover:bg-[#2d6a4f] text-[#e9f5db] font-bold text-xs tracking-wider rounded-xl border border-[#709775]/40 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>RESTART CHAPTER</span>
+            </button>
+
+            <button
+              onClick={onToggleMute}
+              aria-label={isMuted ? 'Unmute Audio' : 'Mute Audio'}
+              className="w-full py-2 text-[#95d5b2] hover:text-white font-semibold text-xs flex items-center justify-center gap-2 cursor-pointer"
+            >
+              {isMuted ? (
+                <VolumeX className="w-4 h-4 text-red-300" />
+              ) : (
+                <Volume2 className="w-4 h-4 text-[#ffd166]" />
+              )}
+              <span>{isMuted ? 'Sound: Off' : 'Sound: On'}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 2. VICTORY MODAL (INFINITE CHAPTER PROGRESSION) */}
+      {gameState === 'victory' && (
+        <div className="w-full max-w-md bg-[#1b4332] border-2 border-[#ffd166] rounded-3xl p-6 sm:p-7 shadow-2xl text-center flex flex-col items-center">
+          <div className="w-14 h-14 rounded-3xl bg-gradient-to-br from-[#ffd166] to-[#f4a261] border-2 border-white flex items-center justify-center mb-2.5 shadow-lg">
+            <Trophy className="w-7 h-7 text-[#081c15]" />
+          </div>
+
+          <h2 className="text-2xl font-black text-[#ffd166] tracking-tight mb-1">
+            CHAPTER {chapterInfo.chapterNumber} RESTORED!
+          </h2>
+          <p className="text-xs text-[#d8f3dc] mb-3 max-w-sm leading-relaxed">
+            {nextChapter.storyParagraph}
+          </p>
+
+          <div className="flex items-center gap-2 mb-4">
+            {[1, 2, 3].map((starIdx) => {
+              const active = (finalSummary?.stars || 1) >= starIdx;
+              return (
+                <Star
+                  key={starIdx}
+                  className={`w-6 h-6 ${
+                    active ? 'text-[#ffd166] fill-[#ffd166]' : 'text-gray-500 fill-gray-600'
+                  } drop-shadow-md`}
+                />
+              );
+            })}
+          </div>
+
+          <div className="w-full grid grid-cols-2 gap-2 mb-5 text-left">
+            <div className="bg-[#0f281e] p-2.5 rounded-xl border border-[#2d6a4f]">
+              <span className="text-[10px] font-bold text-[#95d5b2] uppercase block">
+                Total Score
+              </span>
+              <span className="text-base font-black text-[#ffd166] tabular-nums">
+                {finalSummary?.finalScore ?? player.score}
+              </span>
+            </div>
+
+            <div className="bg-[#0f281e] p-2.5 rounded-xl border border-[#2d6a4f]">
+              <span className="text-[10px] font-bold text-[#95d5b2] uppercase block">
+                Clear Time
+              </span>
+              <span className="text-base font-black text-[#f4fbf1] tabular-nums">
+                {finalSummary?.timeFormatted ?? '0:00'}
+              </span>
+            </div>
+
+            <div className="bg-[#0f281e] p-2.5 rounded-xl border border-[#2d6a4f]">
+              <span className="text-[10px] font-bold text-[#95d5b2] uppercase block">
+                Shrines Awakened
+              </span>
+              <span className="text-base font-black text-[#06d6a0] tabular-nums">
+                {restoredShrines} / {totalShrines}
+              </span>
+            </div>
+
+            <div className="bg-[#0f281e] p-2.5 rounded-xl border border-[#2d6a4f]">
+              <span className="text-[10px] font-bold text-[#95d5b2] uppercase block">
+                Critters Cleansed
+              </span>
+              <span className="text-base font-black text-[#f4fbf1] tabular-nums">
+                {cleansedEnemiesCount}
+              </span>
+            </div>
+          </div>
+
+          <button
+            data-start="true"
+            onClick={() => admob.showInterstitialAd(onNextChapter)}
+            aria-label="Advance to Next Chapter"
+            className="w-full py-3.5 bg-gradient-to-r from-[#ffd166] to-[#f4a261] text-[#0d2818] font-black text-sm tracking-wider rounded-2xl shadow-xl border border-white/50 flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Sparkles className="w-4 h-4 fill-current" />
+            <span>ENTER {nextChapter.title.toUpperCase()}</span>
+          </button>
+        </div>
+      )}
+
+      {/* 3. GAME OVER MODAL (WITH ONLINE-ONLY REWARDED AD REVIVE) */}
+      {gameState === 'gameover' && (
+        <div className="w-full max-w-sm bg-[#1b4332] border-2 border-red-500/70 rounded-3xl p-6 sm:p-7 shadow-2xl text-center flex flex-col items-center">
+          <div className="w-14 h-14 rounded-2xl bg-red-900/60 border border-red-500/60 flex items-center justify-center mb-3">
+            <AlertCircle className="w-7 h-7 text-red-300" />
+          </div>
+
+          <h2 className="text-2xl font-black text-red-200 tracking-tight mb-1">
+            PIP WILTED
+          </h2>
+          <p className="text-xs text-[#d8f3dc] mb-4">
+            The gloomy brambles overwhelmed you in {chapterInfo.title}.
+          </p>
+
+          <div className="w-full grid grid-cols-2 gap-2 mb-5 text-left">
+            <div className="bg-[#0f281e] p-2.5 rounded-xl border border-[#2d6a4f]">
+              <span className="text-[10px] font-bold text-[#95d5b2] uppercase block">
+                Shrines Awakened
+              </span>
+              <span className="text-base font-black text-[#06d6a0] tabular-nums">
+                {restoredShrines} / {totalShrines}
+              </span>
+            </div>
+
+            <div className="bg-[#0f281e] p-2.5 rounded-xl border border-[#2d6a4f]">
+              <span className="text-[10px] font-bold text-[#95d5b2] uppercase block">
+                Seeds Gathered
+              </span>
+              <span className="text-base font-black text-[#ffd166] tabular-nums">
+                {player.sunSeeds}
+              </span>
+            </div>
+          </div>
+
+          <div className="w-full flex flex-col gap-2.5">
+            {isOnline && (
+              <button
+                type="button"
+                onClick={() =>
+                  admob.showRewardedAd('Second-Wind Full HP Revive', () => {
+                    onReviveWithAd();
+                  })
+                }
+                aria-label="Revive Pip with Rewarded Ad"
+                className="w-full py-3.5 bg-gradient-to-r from-[#ffd166] to-[#f4a261] text-[#081c15] font-black text-xs tracking-wider rounded-xl shadow-lg border border-white/50 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Gift className="w-4 h-4" />
+                <span>REVIVE FULL HP (WATCH AD)</span>
+              </button>
+            )}
+
+            <button
+              data-start="true"
+              onClick={onRestart}
+              aria-label="Try Again"
+              className="w-full py-3 bg-gradient-to-r from-[#80b918] to-[#55a630] text-[#081c15] font-black text-sm tracking-wider rounded-xl shadow-lg border border-white/40 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>TRY AGAIN</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
