@@ -751,10 +751,14 @@ export interface GraphicsQualityProfile {
   shadowsEnabled: boolean;
   shadowMapSize: number;
   toneMappingExposure: number;
+  envMapIntensity: number;
   characterGeometrySegments: number;
   enablePbrBumpMaps: boolean;
   enableReflectiveWaterAndRuins: boolean;
   enableCharacterAuraAndSatchel: boolean;
+  enableSunbeamGodRays: boolean;
+  enableWaterRippleRings: boolean;
+  enableDistantMountainRim: boolean;
   showSecondaryCanopyAndRocks: boolean;
   showHighDetailGrassAndFerns: boolean;
   showUltraCrystalsAndFireflies: boolean;
@@ -765,26 +769,31 @@ export interface GraphicsQualityProfile {
 }
 
 /**
- * Returns deterministic GPU, character mesh fidelity, PBR surface relief, and architectural
- * environment parameters for each phone tier, from budget phones ('eco') to flagships ('ultra').
+ * Returns deterministic GPU, character mesh fidelity, PBR surface relief, studio IBL intensity,
+ * and architectural environment parameters for each phone tier, maximizing visual quality per tier
+ * from budget phones ('eco') up to flagship ('ultra').
  */
 export function getGraphicsQualityProfile(quality: PerformanceQuality): GraphicsQualityProfile {
   switch (quality) {
     case 'eco':
       return {
         quality: 'eco',
-        pixelRatioCap: 0.85,
+        pixelRatioCap: 1.0,
         shadowsEnabled: false,
         shadowMapSize: 512,
-        toneMappingExposure: 1.12,
-        characterGeometrySegments: 10,
+        toneMappingExposure: 1.14,
+        envMapIntensity: 0.35,
+        characterGeometrySegments: 14,
         enablePbrBumpMaps: false,
-        enableReflectiveWaterAndRuins: false,
-        enableCharacterAuraAndSatchel: false,
+        enableReflectiveWaterAndRuins: true, // Keep static low-poly stone archways & pond landmarks visible in Eco!
+        enableCharacterAuraAndSatchel: true, // Keep hero's signature satchel & staff silhouette in Eco!
+        enableSunbeamGodRays: false,
+        enableWaterRippleRings: false,
+        enableDistantMountainRim: true,
         showSecondaryCanopyAndRocks: false,
         showHighDetailGrassAndFerns: false,
         showUltraCrystalsAndFireflies: false,
-        grassBladeCount: 0,
+        grassBladeCount: 60, // Lightweight stylized grass tufts even in Eco
         fernClusterCount: 0,
         crystalClusterCount: 0,
         fireflyCount: 0,
@@ -792,19 +801,23 @@ export function getGraphicsQualityProfile(quality: PerformanceQuality): Graphics
     case 'balanced':
       return {
         quality: 'balanced',
-        pixelRatioCap: 1.35,
+        pixelRatioCap: 1.4,
         shadowsEnabled: true,
         shadowMapSize: 1024,
-        toneMappingExposure: 1.15,
-        characterGeometrySegments: 16,
+        toneMappingExposure: 1.17,
+        envMapIntensity: 0.68,
+        characterGeometrySegments: 18,
         enablePbrBumpMaps: true,
         enableReflectiveWaterAndRuins: true,
         enableCharacterAuraAndSatchel: true,
+        enableSunbeamGodRays: false,
+        enableWaterRippleRings: true,
+        enableDistantMountainRim: true,
         showSecondaryCanopyAndRocks: true,
-        showHighDetailGrassAndFerns: false,
+        showHighDetailGrassAndFerns: true,
         showUltraCrystalsAndFireflies: false,
-        grassBladeCount: 180,
-        fernClusterCount: 24,
+        grassBladeCount: 240,
+        fernClusterCount: 28,
         crystalClusterCount: 0,
         fireflyCount: 0,
       };
@@ -814,39 +827,123 @@ export function getGraphicsQualityProfile(quality: PerformanceQuality): Graphics
         pixelRatioCap: 1.85,
         shadowsEnabled: true,
         shadowMapSize: 1536,
-        toneMappingExposure: 1.18,
-        characterGeometrySegments: 24,
+        toneMappingExposure: 1.2,
+        envMapIntensity: 0.95,
+        characterGeometrySegments: 26,
         enablePbrBumpMaps: true,
         enableReflectiveWaterAndRuins: true,
         enableCharacterAuraAndSatchel: true,
+        enableSunbeamGodRays: true,
+        enableWaterRippleRings: true,
+        enableDistantMountainRim: true,
         showSecondaryCanopyAndRocks: true,
         showHighDetailGrassAndFerns: true,
         showUltraCrystalsAndFireflies: false,
-        grassBladeCount: 420,
-        fernClusterCount: 48,
-        crystalClusterCount: 16,
-        fireflyCount: 36,
+        grassBladeCount: 480,
+        fernClusterCount: 54,
+        crystalClusterCount: 18,
+        fireflyCount: 42,
       };
     case 'ultra':
       return {
         quality: 'ultra',
-        pixelRatioCap: 2.25,
+        pixelRatioCap: 2.35,
         shadowsEnabled: true,
         shadowMapSize: 2048,
-        toneMappingExposure: 1.24,
+        toneMappingExposure: 1.25,
+        envMapIntensity: 1.25,
         characterGeometrySegments: 32,
         enablePbrBumpMaps: true,
         enableReflectiveWaterAndRuins: true,
         enableCharacterAuraAndSatchel: true,
+        enableSunbeamGodRays: true,
+        enableWaterRippleRings: true,
+        enableDistantMountainRim: true,
         showSecondaryCanopyAndRocks: true,
         showHighDetailGrassAndFerns: true,
         showUltraCrystalsAndFireflies: true,
-        grassBladeCount: 650,
-        fernClusterCount: 72,
-        crystalClusterCount: 28,
-        fireflyCount: 75,
+        grassBladeCount: 780,
+        fernClusterCount: 84,
+        crystalClusterCount: 34,
+        fireflyCount: 90,
       };
   }
+}
+
+export type ViewportScaleTier = 'compact-mobile' | 'mobile' | 'tablet' | 'desktop';
+
+export interface ResponsiveHudProfile {
+  tier: ViewportScaleTier;
+  isPortrait: boolean;
+  cameraFov: number;
+  cameraOffsetY: number;
+  cameraOffsetZ: number;
+  joystickPadRadiusPx: number;
+  joystickKnobMaxDistancePx: number;
+  uiFontScale: number;
+}
+
+/**
+ * Computes deterministic viewport-adaptive layout, font scale, 3D camera FOV/framing,
+ * and bounded thumbstick geometry for any screen size (from 320px phones to 4K monitors).
+ */
+export function computeResponsiveHudProfile(
+  viewportWidth: number,
+  viewportHeight: number
+): ResponsiveHudProfile {
+  const w = Math.max(280, viewportWidth);
+  const h = Math.max(280, viewportHeight);
+  const minDim = Math.min(w, h);
+  const aspect = w / h;
+  const isPortrait = aspect < 0.92;
+
+  let tier: ViewportScaleTier = 'desktop';
+  if (w < 420 || minDim < 400) {
+    tier = 'compact-mobile';
+  } else if (w < 768) {
+    tier = 'mobile';
+  } else if (w < 1080) {
+    tier = 'tablet';
+  }
+
+  // Widen vertical FOV and pull camera slightly back on narrow portrait phones so the 3D glade isn't cropped
+  const cameraFov = isPortrait ? Math.min(60, Math.round(45 + (0.95 - aspect) * 24)) : 45;
+  const cameraOffsetY = isPortrait ? 11.2 : 9.5;
+  const cameraOffsetZ = isPortrait ? 14.8 : 12.5;
+
+  const joystickPadRadiusPx = Math.round(Math.max(44, Math.min(66, minDim * 0.125)));
+  const joystickKnobMaxDistancePx = Math.round(joystickPadRadiusPx * 0.68);
+  const uiFontScale =
+    tier === 'compact-mobile' ? 0.86 : tier === 'mobile' ? 0.92 : tier === 'tablet' ? 0.97 : 1.0;
+
+  return {
+    tier,
+    isPortrait,
+    cameraFov,
+    cameraOffsetY,
+    cameraOffsetZ,
+    joystickPadRadiusPx,
+    joystickKnobMaxDistancePx,
+    uiFontScale,
+  };
+}
+
+/**
+ * Verifies that a pointer/touch event initiates strictly inside the bounded bottom-left
+ * joystick pad circle, preventing the joystick from intercepting HUD buttons or story modals.
+ */
+export function isPointInsideJoystickPad(
+  clientX: number,
+  clientY: number,
+  padCenterX: number,
+  padCenterY: number,
+  padRadiusPx: number
+): boolean {
+  const dx = clientX - padCenterX;
+  const dy = clientY - padCenterY;
+  // Allow a slight 12% ergonomic touch halo around the visible ring, never extending into HUD/modals
+  const effectiveRadius = padRadiusPx * 1.12;
+  return dx * dx + dy * dy <= effectiveRadius * effectiveRadius;
 }
 
 export interface ChapterStoryInfo {

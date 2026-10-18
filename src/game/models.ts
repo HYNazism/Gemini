@@ -77,6 +77,7 @@ export interface HeroRig {
   staff: THREE.Group;
   staffCrystal: THREE.Mesh;
   staffRing: THREE.Mesh;
+  auraHaloGroup: THREE.Group;
   leftFoot: THREE.Mesh;
   rightFoot: THREE.Mesh;
   compassGroup: THREE.Group;
@@ -88,6 +89,7 @@ export interface HeroRig {
   swingAngle: number;
   applyCustomization: (custom: CharacterCustomization) => void;
   setHighDetailEnabled: (enabled: boolean) => void;
+  setQualityTier: (quality: 'eco' | 'balanced' | 'high' | 'ultra') => void;
 }
 
 export function createHeroModel(initialCustom: CharacterCustomization = DEFAULT_CUSTOMIZATION): HeroRig {
@@ -323,6 +325,23 @@ export function createHeroModel(initialCustom: CharacterCustomization = DEFAULT_
   staff.add(staffRing);
 
   bodyGroup.add(staff);
+
+  // 10b. High/Ultra Orbiting Sun-Mote Aura Halo around Hero
+  const auraHaloGroup = new THREE.Group();
+  auraHaloGroup.position.set(0, 0.95, 0);
+  for (let i = 0; i < 4; i++) {
+    const ang = (i / 4) * Math.PI * 2;
+    const mote = new THREE.Mesh(new THREE.OctahedronGeometry(0.065, 0), crystalMat);
+    mote.position.set(Math.cos(ang) * 0.78, Math.sin(ang * 2) * 0.14, Math.sin(ang) * 0.78);
+    auraHaloGroup.add(mote);
+  }
+  const auraRing = new THREE.Mesh(
+    new THREE.TorusGeometry(0.76, 0.012, 6, 28),
+    new THREE.MeshBasicMaterial({ color: 0xffe66d, transparent: true, opacity: 0.42 })
+  );
+  auraRing.rotation.x = Math.PI / 2.2;
+  auraHaloGroup.add(auraRing);
+  bodyGroup.add(auraHaloGroup);
 
   // 11. Diegetic 3D Objective Waypoint Compass at Pip's Feet
   const compassGroup = new THREE.Group();
@@ -594,8 +613,14 @@ export function createHeroModel(initialCustom: CharacterCustomization = DEFAULT_
   };
 
   const setHighDetailEnabled = (enabled: boolean) => {
-    satchelGroup.visible = enabled;
+    satchelGroup.visible = true;
     staffRing.visible = enabled;
+  };
+
+  const setQualityTier = (quality: 'eco' | 'balanced' | 'high' | 'ultra') => {
+    satchelGroup.visible = true;
+    staffRing.visible = quality !== 'eco';
+    auraHaloGroup.visible = quality === 'high' || quality === 'ultra';
   };
 
   applyCustomization(initialCustom);
@@ -615,6 +640,7 @@ export function createHeroModel(initialCustom: CharacterCustomization = DEFAULT_
     staff,
     staffCrystal,
     staffRing,
+    auraHaloGroup,
     leftFoot,
     rightFoot,
     compassGroup,
@@ -626,6 +652,7 @@ export function createHeroModel(initialCustom: CharacterCustomization = DEFAULT_
     swingAngle: 0,
     applyCustomization,
     setHighDetailEnabled,
+    setQualityTier,
   };
 }
 

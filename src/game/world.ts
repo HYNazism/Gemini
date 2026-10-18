@@ -286,8 +286,11 @@ export function createWeatherSystem(scene: THREE.Scene, count = 130): WeatherPar
 }
 
 export interface EnvironmentDetailRig {
+  distantMountainRimGroup: THREE.Group;
   secondaryCanopyAndRocksGroup: THREE.Group;
   architectureAndWaterGroup: THREE.Group;
+  waterRippleRingsGroup: THREE.Group;
+  sunbeamGodRaysGroup: THREE.Group;
   highDetailFoliageGroup: THREE.Group;
   ultraDetailGroup: THREE.Group;
   applyQualityProfile: (profile: GraphicsQualityProfile) => void;
@@ -544,6 +547,40 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
   secondaryCanopyAndRocksGroup.add(stepStoneMesh);
   scene.add(secondaryCanopyAndRocksGroup);
 
+  // ==========================================================================
+  // TIER 0 (ALL TIERS INCLUDING ECO): DISTANT HORIZON MOUNTAIN & VALLEY RIM
+  // ==========================================================================
+  const distantMountainRimGroup = new THREE.Group();
+  const mountainCount = 20;
+  const mountainGeo = new THREE.ConeGeometry(8.5, 16.5, 6);
+  mountainGeo.translate(0, 7.2, 0);
+  const mountainMat = new THREE.MeshStandardMaterial({
+    color: 0x3b6e52,
+    roughness: 0.92,
+    metalness: 0.02,
+  });
+  const mountainMesh = new THREE.InstancedMesh(mountainGeo, mountainMat, mountainCount);
+  for (let i = 0; i < mountainCount; i++) {
+    const ang = (i / mountainCount) * Math.PI * 2 + (i % 2) * 0.08;
+    const rad = 52 + (i % 3) * 4.5;
+    const mx = Math.cos(ang) * rad;
+    const mz = Math.sin(ang) * rad;
+    const my = getGroundHeight(mx, mz) - 1.5;
+    dummy.position.set(mx, my, mz);
+    const sx = 1.0 + (i % 3) * 0.35;
+    const sy = 0.75 + ((i + 1) % 4) * 0.28;
+    dummy.scale.set(sx, sy, sx);
+    dummy.rotation.set(0, ang, 0);
+    dummy.updateMatrix();
+    mountainMesh.setMatrixAt(i, dummy.matrix);
+    color.setHex(i % 2 === 0 ? 0x2d5a40 : 0x3a6b4c);
+    mountainMesh.setColorAt(i, color);
+  }
+  mountainMesh.instanceMatrix.needsUpdate = true;
+  if (mountainMesh.instanceColor) mountainMesh.instanceColor.needsUpdate = true;
+  distantMountainRimGroup.add(mountainMesh);
+  scene.add(distantMountainRimGroup);
+
   // Architectural Landmarks & Reflective Crystal Pond
   const architectureAndWaterGroup = new THREE.Group();
 
@@ -565,6 +602,35 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
   const waterMesh = new THREE.Mesh(waterGeo, waterMat);
   waterMesh.position.set(pondX, pondY, pondZ);
   architectureAndWaterGroup.add(waterMesh);
+
+  // Cozy Wooden Pond Jetty / Stepping Pier
+  const pierTimberMat = new THREE.MeshStandardMaterial({ color: 0x6f4518, roughness: 0.78 });
+  for (let p = 0; p < 4; p++) {
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.09, 0.34), pierTimberMat);
+    plank.position.set(pondX - 3.6 + p * 0.45, pondY + 0.08, pondZ);
+    plank.castShadow = true;
+    architectureAndWaterGroup.add(plank);
+  }
+
+  // Animated Crystal Pond Water Ripple Rings (Balanced -> Ultra)
+  const waterRippleRingsGroup = new THREE.Group();
+  waterRippleRingsGroup.position.set(pondX, pondY + 0.025, pondZ);
+  const rippleMeshes: THREE.Mesh[] = [];
+  for (let r = 0; r < 3; r++) {
+    const rGeo = new THREE.RingGeometry(0.65, 0.76, 28);
+    rGeo.rotateX(-Math.PI / 2);
+    const rMat = new THREE.MeshBasicMaterial({
+      color: 0xade8f4,
+      transparent: true,
+      opacity: 0.45,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const rMesh = new THREE.Mesh(rGeo, rMat);
+    waterRippleRingsGroup.add(rMesh);
+    rippleMeshes.push(rMesh);
+  }
+  scene.add(waterRippleRingsGroup);
 
   // Pond Rim Stones & Floating Lily Pads
   const lilyMat = new THREE.MeshStandardMaterial({ color: 0x52b788, roughness: 0.55 });
@@ -649,11 +715,41 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
   scene.add(architectureAndWaterGroup);
 
   // ==========================================================================
-  // TIER 2: HIGH+ DETAILS (Lush 3D Grass Blades & Multi-Frond Woodland Ferns)
+  // TIER 2B: VOLUMETRIC SUNBEAM GOD-RAY SHAFTS (HIGH & ULTRA TIERS)
+  // ==========================================================================
+  const sunbeamGodRaysGroup = new THREE.Group();
+  const rayGeo = new THREE.CylinderGeometry(0.85, 2.6, 13.5, 14, 1, true);
+  rayGeo.translate(0, 6.75, 0);
+  const rayMat = new THREE.MeshBasicMaterial({
+    color: 0xfff3b0,
+    transparent: true,
+    opacity: 0.11,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const rayLocations = [
+    [0, 14], // Cozy Home Base Sanctuary
+    [-18, -16], // Shrine 1
+    [18, -16], // Shrine 2
+    [-18, 18], // Shrine 3
+    [18, 18], // Shrine 4
+  ];
+  rayLocations.forEach(([rx, rz]) => {
+    const ray = new THREE.Mesh(rayGeo, rayMat);
+    ray.position.set(rx, getGroundHeight(rx, rz), rz);
+    ray.rotation.z = -0.16;
+    ray.rotation.x = 0.08;
+    sunbeamGodRaysGroup.add(ray);
+  });
+  scene.add(sunbeamGodRaysGroup);
+
+  // ==========================================================================
+  // TIER 2: SCALABLE 3D GRASS BLADES (ECO 60 -> ULTRA 780) & WOODLAND FERNS
   // ==========================================================================
   const highDetailFoliageGroup = new THREE.Group();
 
-  const maxGrassCount = 650;
+  const maxGrassCount = 780;
   const grassGeo = new THREE.ConeGeometry(0.09, 0.52, 4);
   grassGeo.translate(0, 0.25, 0);
   const grassMat = new THREE.MeshStandardMaterial({
@@ -685,7 +781,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
   if (grassMesh.instanceColor) grassMesh.instanceColor.needsUpdate = true;
   highDetailFoliageGroup.add(grassMesh);
 
-  const maxFernCount = 72;
+  const maxFernCount = 84;
   const fernGeo = new THREE.DodecahedronGeometry(0.52, 1);
   fernGeo.scale(1.25, 0.55, 1.25);
   fernGeo.translate(0, 0.24, 0);
@@ -724,7 +820,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
   // ==========================================================================
   const ultraDetailGroup = new THREE.Group();
 
-  const maxCrystalCount = 28;
+  const maxCrystalCount = 34;
   const crystalGeo = new THREE.OctahedronGeometry(0.38, 0);
   crystalGeo.scale(0.65, 1.85, 0.65);
   crystalGeo.translate(0, 0.55, 0);
@@ -759,7 +855,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
   if (crystalMesh.instanceColor) crystalMesh.instanceColor.needsUpdate = true;
   ultraDetailGroup.add(crystalMesh);
 
-  const maxFireflyCount = 75;
+  const maxFireflyCount = 90;
   const fireflyGeo = new THREE.DodecahedronGeometry(0.09, 0);
   const fireflyMat = new THREE.MeshBasicMaterial({
     color: 0xffe66d,
@@ -791,10 +887,13 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
   let activeFireflies = 0;
 
   const applyQualityProfile = (profile: GraphicsQualityProfile) => {
+    distantMountainRimGroup.visible = profile.enableDistantMountainRim;
     secondaryCanopyAndRocksGroup.visible = profile.showSecondaryCanopyAndRocks;
     architectureAndWaterGroup.visible = profile.enableReflectiveWaterAndRuins;
-    highDetailFoliageGroup.visible = profile.showHighDetailGrassAndFerns;
-    ultraDetailGroup.visible = profile.showUltraCrystalsAndFireflies;
+    waterRippleRingsGroup.visible = profile.enableWaterRippleRings;
+    sunbeamGodRaysGroup.visible = profile.enableSunbeamGodRays;
+    highDetailFoliageGroup.visible = profile.grassBladeCount > 0 || profile.fernClusterCount > 0;
+    ultraDetailGroup.visible = profile.showUltraCrystalsAndFireflies || profile.crystalClusterCount > 0;
 
     terrainMat.bumpScale = profile.enablePbrBumpMaps ? 0.085 : 0;
     terrainMat.needsUpdate = true;
@@ -809,6 +908,20 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
   const updateDetails = (elapsedTime: number) => {
     if (architectureAndWaterGroup.visible) {
       waterMat.emissiveIntensity = 0.22 + Math.sin(elapsedTime * 2.2) * 0.08;
+    }
+
+    if (waterRippleRingsGroup.visible) {
+      for (let r = 0; r < rippleMeshes.length; r++) {
+        const mesh = rippleMeshes[r];
+        const phase = ((elapsedTime * 0.55 + r * 0.33) % 1);
+        const scale = 0.6 + phase * 3.8;
+        mesh.scale.set(scale, 1, scale);
+        (mesh.material as THREE.MeshBasicMaterial).opacity = (1 - phase) * 0.42;
+      }
+    }
+
+    if (sunbeamGodRaysGroup.visible) {
+      rayMat.opacity = 0.08 + Math.sin(elapsedTime * 1.4) * 0.035;
     }
 
     if (!ultraDetailGroup.visible || activeFireflies <= 0) return;
@@ -834,8 +947,11 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
   };
 
   return {
+    distantMountainRimGroup,
     secondaryCanopyAndRocksGroup,
     architectureAndWaterGroup,
+    waterRippleRingsGroup,
+    sunbeamGodRaysGroup,
     highDetailFoliageGroup,
     ultraDetailGroup,
     applyQualityProfile,
