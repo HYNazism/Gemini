@@ -1,0 +1,17 @@
+{
+  "project": "Sproutling: Grove Guardian 3D",
+  "packageId": "com.hyn198911.sproutling3d",
+  "subfolder": "sproutling-android-release",
+  "version": "1.2.0",
+  "publisherAccount": "hyn198911@gmail.com",
+  "capabilities": [
+    "60fps-eco-mode-for-low-end-phones",
+    "100-percent-offline-service-worker",
+    "online-only-google-play-admob-sdk",
+    "3d-character-customization",
+    "dynamic-day-night-and-weather",
+    "cozy-home-base-sanctuary-and-trophies",
+    "infinite-procedural-story-chapters",
+    "github-actions-apk-and-aab-release-pipeline"
+  ]
+}

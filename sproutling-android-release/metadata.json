@@ -1,0 +1,6 @@
+{
+  "name": "Sproutling: Grove Guardian 3D",
+  "description": "A cozy, vibrant 3D action adventure for Android and Web. Guide Pip the Sproutling through the enchanted grove, bonk mischievous gloomlings, harvest sun-seeds, and awaken ancient forest shrines.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
