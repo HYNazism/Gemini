@@ -1,17 +1,19 @@
 /**
- * First-class Android & Mobile Touch Controls:
+ * First-class Android & Mobile Touch Controls (Persian & English):
  * - Dynamic Left-Hand Virtual Thumbstick with smooth floating center
- * - Right-Hand Ergonomic Action Cluster (Whack, Dash, Bloom Spin, Harvest)
+ * - Right-Hand Ergonomic Action Cluster (Whack/ضربه, Dash/جهش, Bloom Spin/چرخش, Restore/احیا)
  */
 
 import React, { useRef, useState, useEffect } from 'react';
 import type { TouchInputState } from '../game/engine';
+import type { Language } from '../game/i18n';
 
 interface TouchControlsProps {
   touchInputs: TouchInputState;
   isNearShrine: boolean;
   dashCooldown: number;
   spinCooldown: number;
+  lang: Language;
 }
 
 export const TouchControls: React.FC<TouchControlsProps> = ({
@@ -19,7 +21,9 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
   isNearShrine,
   dashCooldown,
   spinCooldown,
+  lang,
 }) => {
+  const isFa = lang === 'fa';
   const joystickAreaRef = useRef<HTMLDivElement>(null);
   const [joystickActive, setJoystickActive] = useState(false);
   const [stickOrigin, setStickOrigin] = useState({ x: 0, y: 0 });
@@ -91,7 +95,7 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
   }, []);
 
   return (
-    <div className="absolute inset-0 pointer-events-none z-20 flex select-none touch-none">
+    <div dir="ltr" className="absolute inset-0 pointer-events-none z-20 flex select-none touch-none">
       {/* Left Touch Joystick Zone */}
       <div
         ref={joystickAreaRef}
@@ -117,8 +121,8 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
           </div>
         ) : (
           <div className="w-24 h-24 rounded-full border border-[#d8f3dc]/30 bg-[#1b4332]/20 flex items-center justify-center mb-6 ml-2">
-            <span className="text-[11px] font-bold text-[#d8f3dc]/60 uppercase tracking-wider">
-              Drag Stick
+            <span className="text-[11px] font-bold text-[#d8f3dc]/70 tracking-wide text-center px-2">
+              {isFa ? 'چوبک حرکت' : 'Drag Stick'}
             </span>
           </div>
         )}
@@ -129,6 +133,7 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
         <div className="relative w-48 h-48 pointer-events-auto">
           {/* Whack / Bonk (Large primary bottom-right) */}
           <button
+            type="button"
             onPointerDown={(e) => {
               e.preventDefault();
               touchInputs.bonkPressed = true;
@@ -137,11 +142,12 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
             className="absolute bottom-1 right-1 w-20 h-20 rounded-full bg-gradient-to-br from-[#80b918] to-[#55a630] border-3 border-[#e9f5db] text-[#0d2818] font-black text-xs tracking-wider shadow-xl flex flex-col items-center justify-center active:scale-90 transition-transform cursor-pointer"
           >
             <span className="text-xl">🌰</span>
-            <span>BONK</span>
+            <span>{isFa ? 'ضربه' : 'BONK'}</span>
           </button>
 
           {/* Dandelion Dash (Bottom left of cluster) */}
           <button
+            type="button"
             onPointerDown={(e) => {
               e.preventDefault();
               if (dashCooldown <= 0) touchInputs.dashPressed = true;
@@ -155,11 +161,12 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
             }`}
           >
             <span className="text-base">💨</span>
-            <span>{dashCooldown > 0 ? dashCooldown.toFixed(1) : 'DASH'}</span>
+            <span>{dashCooldown > 0 ? dashCooldown.toFixed(1) : isFa ? 'جهش' : 'DASH'}</span>
           </button>
 
           {/* Pollen Bloom Spin (Top right of cluster) */}
           <button
+            type="button"
             onPointerDown={(e) => {
               e.preventDefault();
               if (spinCooldown <= 0) touchInputs.spinPressed = true;
@@ -173,11 +180,12 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
             }`}
           >
             <span className="text-base">🌸</span>
-            <span>{spinCooldown > 0 ? spinCooldown.toFixed(1) : 'BLOOM'}</span>
+            <span>{spinCooldown > 0 ? spinCooldown.toFixed(1) : isFa ? 'چرخش' : 'BLOOM'}</span>
           </button>
 
           {/* Harvest / Deposit (Top left of cluster - glows if near shrine) */}
           <button
+            type="button"
             onPointerDown={(e) => {
               e.preventDefault();
               touchInputs.interactPressed = true;
@@ -190,7 +198,7 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
             }`}
           >
             <span className="text-sm">✨</span>
-            <span>RESTORE</span>
+            <span>{isFa ? 'احیا' : 'RESTORE'}</span>
           </button>
         </div>
       </div>

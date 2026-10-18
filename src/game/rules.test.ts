@@ -232,3 +232,17 @@ test('generateChapterInfo produces infinite procedural chapters and story progre
   assert.ok(ch50.bossMaxHp >= ch1.bossMaxHp);
 });
 
+test('Persian localization generates valid Persian chapter stories and shrine prompts', async () => {
+  const { getLocalizedChapterInfo, localizeShrinePrompt } = await import('./i18n.ts');
+  const faCh1 = getLocalizedChapterInfo(1, 'fa');
+  const faCh5 = getLocalizedChapterInfo(5, 'fa');
+  assert.ok(faCh1.title.includes('فصل 1'));
+  assert.ok(faCh5.title.includes('فصل 5'));
+  assert.ok(faCh1.storyParagraph.includes('پیپ'));
+
+  const promptFa = localizeShrinePrompt('Press E or Tap RESTORE to deposit Sun-Seed (1/3)', 'fa');
+  assert.ok(promptFa.includes('(1/3)'));
+  assert.ok(promptFa.includes('احیا'));
+});
+
+

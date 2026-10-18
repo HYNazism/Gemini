@@ -1,13 +1,19 @@
 /**
- * World-matched, low-occlusion Playing HUD.
+ * World-matched, low-occlusion Playing HUD (Persian & English).
  * >= 85% playfield unobstructed, zero backdrop-filter, tabular-nums.
  * Includes Weather/Time indicator, Sanctuary Safe-Zone banner, and Online-Only Rewarded Ad button.
  */
 
 import React, { useState, useEffect } from 'react';
-import { Volume2, VolumeX, Pause, Sparkles, Sun, CloudSun, Home, Gift, User } from 'lucide-react';
+import { Volume2, VolumeX, Pause, Sparkles, Sun, CloudSun, Home, Gift, User, Languages } from 'lucide-react';
 import type { HUDData } from '../game/engine';
 import { admob } from '../game/admob';
+import {
+  WEATHER_SHORT_LABELS,
+  TIME_PHASE_LABELS,
+  localizeShrinePrompt,
+  type Language,
+} from '../game/i18n';
 
 interface GameHUDProps {
   data: HUDData;
@@ -15,6 +21,8 @@ interface GameHUDProps {
   onToggleMute: () => void;
   onOpenCustomize: (tab: 'hero' | 'home' | 'atmosphere') => void;
   onGrantRewardedSeeds: () => void;
+  lang: Language;
+  onToggleLang: () => void;
 }
 
 export const GameHUD: React.FC<GameHUDProps> = ({
@@ -23,6 +31,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onToggleMute,
   onOpenCustomize,
   onGrantRewardedSeeds,
+  lang,
+  onToggleLang,
 }) => {
   const {
     player,
@@ -37,6 +47,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     chapterInfo,
   } = data;
 
+  const isFa = lang === 'fa';
   const [isOnline, setIsOnline] = useState<boolean>(() => admob.isOnline());
 
   useEffect(() => {
@@ -51,7 +62,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   }, []);
 
   const handleRewardedBlessing = () => {
-    admob.showRewardedAd('+3 Golden Sun-Seeds', () => {
+    admob.showRewardedAd(isFa ? '+۳ بذر طلایی خورشید' : '+3 Golden Sun-Seeds', () => {
       onGrantRewardedSeeds();
     });
   };
@@ -65,7 +76,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           {/* Health Leaves Socket */}
           <div className="flex items-center gap-1.5 bg-[#1b4332]/85 px-3 py-1.5 rounded-2xl border border-[#709775]/50 shadow-md">
             <span className="text-[10px] font-black text-[#95d5b2] uppercase tracking-wider mr-1">
-              HP
+              {isFa ? 'جان' : 'HP'}
             </span>
             {Array.from({ length: player.maxHp }).map((_, i) => {
               const isFull = i < player.hp;
@@ -84,7 +95,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               );
             })}
             <span className="ml-1.5 text-[10px] font-black text-[#ffd166] uppercase">
-              Ch.{chapterInfo.chapterNumber}
+              {isFa ? `فصل ${chapterInfo.chapterNumber}` : `Ch.${chapterInfo.chapterNumber}`}
             </span>
           </div>
 
@@ -95,7 +106,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <span className="text-sm font-black text-[#ffd166] tabular-nums">
                 {player.sunSeeds}
               </span>
-              <span className="text-[10px] font-bold text-[#d8f3dc]/70 uppercase">Seeds</span>
+              <span className="text-[10px] font-bold text-[#d8f3dc]/80">
+                {isFa ? 'بذر' : 'Seeds'}
+              </span>
             </div>
 
             <div className="w-[1px] h-3.5 bg-[#709775]/40" />
@@ -105,7 +118,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <span className="text-sm font-black text-[#06d6a0] tabular-nums">
                 {restoredShrines}/{totalShrines}
               </span>
-              <span className="text-[10px] font-bold text-[#d8f3dc]/70 uppercase">Shrines</span>
+              <span className="text-[10px] font-bold text-[#d8f3dc]/80">
+                {isFa ? 'نیایشگاه' : 'Shrines'}
+              </span>
             </div>
           </div>
         </div>
@@ -121,7 +136,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               className="bg-[#ffd166] hover:bg-[#ffe08a] text-[#081c15] px-2.5 py-1.5 rounded-xl font-black text-[11px] flex items-center gap-1 shadow-md pointer-events-auto cursor-pointer"
             >
               <Gift className="w-3.5 h-3.5" />
-              <span>+3 Seeds (Ad)</span>
+              <span>{isFa ? '+۳ بذر (تبلیغ)' : '+3 Seeds (Ad)'}</span>
             </button>
           )}
 
@@ -130,11 +145,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             type="button"
             onClick={() => onOpenCustomize('atmosphere')}
             aria-label="Open Weather and Day-Night Settings"
-            className="bg-[#1b4332]/85 hover:bg-[#2d6a4f] px-2.5 py-1.5 rounded-xl border border-[#709775]/50 shadow-md flex items-center gap-1.5 text-[11px] font-bold text-[#d8f3dc] capitalize pointer-events-auto cursor-pointer"
+            className="bg-[#1b4332]/85 hover:bg-[#2d6a4f] px-2.5 py-1.5 rounded-xl border border-[#709775]/50 shadow-md flex items-center gap-1.5 text-[11px] font-bold text-[#d8f3dc] pointer-events-auto cursor-pointer"
           >
             <CloudSun className="w-3.5 h-3.5 text-[#48cae4]" />
             <span>
-              {timePhase} · {weather}
+              {TIME_PHASE_LABELS[lang][timePhase]} · {WEATHER_SHORT_LABELS[lang][weather]}
             </span>
           </button>
 
@@ -148,14 +163,28 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <User className="w-4 h-4 text-[#80b918]" />
           </button>
 
+          {/* Language Toggle Button */}
+          <button
+            type="button"
+            onClick={onToggleLang}
+            aria-label="Switch Language"
+            className="px-2.5 h-9 rounded-xl bg-[#1b4332]/85 border border-[#709775]/50 text-[#ffd166] text-[11px] font-black flex items-center gap-1 hover:bg-[#2d6a4f] shadow-md pointer-events-auto cursor-pointer"
+          >
+            <Languages className="w-3.5 h-3.5" />
+            <span>{isFa ? 'EN' : 'فا'}</span>
+          </button>
+
           {/* Score Badge */}
           <div className="bg-[#1b4332]/85 px-3 py-1.5 rounded-xl border border-[#709775]/50 shadow-md flex items-baseline gap-1">
-            <span className="text-[10px] font-bold text-[#95d5b2] uppercase">SCORE</span>
+            <span className="text-[10px] font-bold text-[#95d5b2]">
+              {isFa ? 'امتیاز' : 'SCORE'}
+            </span>
             <span className="text-sm font-black text-[#f4fbf1] tabular-nums">{player.score}</span>
           </div>
 
           {/* Mute button */}
           <button
+            type="button"
             onClick={onToggleMute}
             aria-label={isMuted ? 'Unmute game' : 'Mute game'}
             className="w-9 h-9 rounded-xl bg-[#1b4332]/85 border border-[#709775]/50 text-[#e9f5db] flex items-center justify-center hover:bg-[#2d6a4f] active:scale-95 transition-all shadow-md pointer-events-auto cursor-pointer"
@@ -169,6 +198,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
           {/* Pause button */}
           <button
+            type="button"
             onClick={onPause}
             aria-label="Pause game"
             className="w-9 h-9 rounded-xl bg-[#1b4332]/85 border border-[#709775]/50 text-[#e9f5db] flex items-center justify-center hover:bg-[#2d6a4f] active:scale-95 transition-all shadow-md pointer-events-auto cursor-pointer"
@@ -180,21 +210,27 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
       {/* Center-Top Prompt Pill (Near Shrine OR Inside Cozy Home Base Sanctuary) */}
       {isNearShrine ? (
-        <div className="self-center mb-auto mt-2 bg-[#2d5029]/90 border border-[#ffd166]/70 px-4 py-2 rounded-2xl shadow-xl flex items-center gap-2 pointer-events-none">
-          <Sparkles className="w-4 h-4 text-[#ffd166]" />
+        <div
+          dir={isFa ? 'rtl' : 'ltr'}
+          className="self-center mb-auto mt-2 bg-[#2d5029]/90 border border-[#ffd166]/70 px-4 py-2 rounded-2xl shadow-xl flex items-center gap-2 pointer-events-none"
+        >
+          <Sparkles className="w-4 h-4 text-[#ffd166] shrink-0" />
           <span className="text-xs sm:text-sm font-bold text-[#fffdf0] tracking-wide">
-            {nearShrinePrompt}
+            {localizeShrinePrompt(nearShrinePrompt, lang)}
           </span>
         </div>
       ) : isInsideSafeZone ? (
         <button
           type="button"
+          dir={isFa ? 'rtl' : 'ltr'}
           onClick={() => onOpenCustomize('home')}
           className="self-center mb-auto mt-2 bg-[#1b4332]/90 hover:bg-[#2d6a4f] border border-[#95d5b2]/70 px-4 py-1.5 rounded-2xl shadow-xl flex items-center gap-2 pointer-events-auto cursor-pointer"
         >
-          <Home className="w-4 h-4 text-[#ffd166]" />
+          <Home className="w-4 h-4 text-[#ffd166] shrink-0" />
           <span className="text-xs font-bold text-[#d8f3dc]">
-            Sanctuary Safe Zone (Healing) · Tap to Decorate Base & Trophies
+            {isFa
+              ? 'پناهگاه امن (درمان خودکار) · برای تزئین کلبه و تندیس‌ها لمس کنید'
+              : 'Sanctuary Safe Zone (Healing) · Tap to Decorate Base & Trophies'}
           </span>
         </button>
       ) : null}
@@ -202,7 +238,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       {/* Combo Step Pop if Active */}
       {player.comboCount > 1 && (
         <div className="self-center mb-8 bg-[#ffb703]/90 text-[#370617] px-3 py-1 rounded-full text-xs font-black tracking-wider uppercase border border-white/60 shadow-lg">
-          Combo x{player.comboCount}!
+          {isFa ? `ضربه زنجیره‌ای ×${player.comboCount}!` : `Combo x${player.comboCount}!`}
         </div>
       )}
     </div>

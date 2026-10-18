@@ -1,6 +1,7 @@
 /**
  * Main Application Component for Sproutling: Grove Guardian 3D.
  * Mounts the isolated Three.js canvas container and manages decoupled Game Shell UI,
+ * Bilingual Persian/English ('fa' | 'en') Localization,
  * 3D Character Customizer, Cozy Home Base Sanctuary, Day/Night & Weather controls,
  * and Google Play AdMob / Android APK export.
  */
@@ -13,6 +14,7 @@ import { TouchControls } from './components/TouchControls';
 import { StatusModals } from './components/StatusModals';
 import { CustomizeAndBaseModal } from './components/CustomizeAndBaseModal';
 import { ReleaseAndAdsModal, AdMobSimulatorOverlay } from './components/ReleaseAndAdsModal';
+import { getSavedLanguage, saveLanguage, type Language } from './game/i18n';
 import {
   createInitialPlayer,
   DEFAULT_CUSTOMIZATION,
@@ -29,8 +31,17 @@ export default function App() {
   const mountRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
 
+  const [lang, setLang] = useState<Language>(() => getSavedLanguage());
   const [customizeMode, setCustomizeMode] = useState<'none' | 'hero' | 'home' | 'atmosphere'>('none');
   const [adMobModalOpen, setAdMobModalOpen] = useState(false);
+
+  const handleToggleLang = useCallback(() => {
+    setLang((prev) => {
+      const next: Language = prev === 'fa' ? 'en' : 'fa';
+      saveLanguage(next);
+      return next;
+    });
+  }, []);
 
   const [hudData, setHudData] = useState<HUDData>(() => ({
     gameState: 'title',
@@ -169,6 +180,7 @@ export default function App() {
   return (
     <div
       data-testid="game-root"
+      data-lang={lang}
       className="relative w-screen h-screen overflow-hidden bg-[#1b4332] select-none touch-none"
     >
       {/* Isolated Three.js Canvas Container */}
@@ -188,6 +200,8 @@ export default function App() {
           onOpenCustomizeHero={() => handleOpenCustomize('hero')}
           onOpenCustomizeHome={() => handleOpenCustomize('home')}
           onOpenAdMobAndApk={() => setAdMobModalOpen(true)}
+          lang={lang}
+          onToggleLang={handleToggleLang}
         />
       )}
 
@@ -200,6 +214,8 @@ export default function App() {
             onToggleMute={handleToggleMute}
             onOpenCustomize={handleOpenCustomize}
             onGrantRewardedSeeds={handleGrantRewardedSeeds}
+            lang={lang}
+            onToggleLang={handleToggleLang}
           />
 
           {engineRef.current && customizeMode === 'none' && (
@@ -208,6 +224,7 @@ export default function App() {
               isNearShrine={hudData.isNearShrine}
               dashCooldown={hudData.player.dashCooldownRemaining}
               spinCooldown={hudData.player.spinCooldownRemaining}
+              lang={lang}
             />
           )}
         </>
@@ -224,6 +241,8 @@ export default function App() {
           onToggleMute={handleToggleMute}
           onOpenCustomize={() => handleOpenCustomize('hero')}
           onOpenAdMobAndApk={() => setAdMobModalOpen(true)}
+          lang={lang}
+          onToggleLang={handleToggleLang}
         />
       )}
 
@@ -244,6 +263,7 @@ export default function App() {
         onToggleAutoDayNight={handleToggleAutoDayNight}
         performanceQuality={hudData.performanceQuality}
         onSetPerformanceQuality={handleSetPerformanceQuality}
+        lang={lang}
       />
 
       {/* Google Play AdMob & Android APK Export Modal */}

@@ -1,12 +1,13 @@
 /**
  * Bespoke Title Screen with custom inline SVG title lockup,
- * continuous story chapter banner, Start CTA (data-start="true"),
+ * continuous story chapter banner (Persian / English), Start CTA (data-start="true"),
  * 3D Character Customizer, Home Base Sanctuary Decorator, and APK/AdMob setup.
  */
 
 import React from 'react';
-import { Volume2, VolumeX, Sparkles, Compass, User, Home, Smartphone } from 'lucide-react';
+import { Volume2, VolumeX, Sparkles, Compass, User, Home, Smartphone, Languages } from 'lucide-react';
 import type { ChapterStoryInfo } from '../game/rules';
+import { getLocalizedChapterInfo, type Language } from '../game/i18n';
 
 interface TitleScreenProps {
   onStart: () => void;
@@ -16,6 +17,8 @@ interface TitleScreenProps {
   onOpenCustomizeHero: () => void;
   onOpenCustomizeHome: () => void;
   onOpenAdMobAndApk: () => void;
+  lang: Language;
+  onToggleLang: () => void;
 }
 
 export const TitleScreen: React.FC<TitleScreenProps> = ({
@@ -26,27 +29,47 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onOpenCustomizeHero,
   onOpenCustomizeHome,
   onOpenAdMobAndApk,
+  lang,
+  onToggleLang,
 }) => {
+  const isFa = lang === 'fa';
+  const localizedChapter = getLocalizedChapterInfo(chapterInfo.chapterNumber, lang);
+
   return (
-    <div className="absolute inset-0 z-30 pointer-events-auto flex flex-col justify-between p-5 sm:p-8 select-none">
-      {/* Top Bar with cozy badge, APK/AdMob setup, and audio toggle */}
+    <div
+      dir={isFa ? 'rtl' : 'ltr'}
+      className="absolute inset-0 z-30 pointer-events-auto flex flex-col justify-between p-5 sm:p-8 select-none"
+    >
+      {/* Top Bar with cozy chapter badge, Language switch, APK/AdMob setup, and audio toggle */}
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 bg-[#2d5029]/85 text-[#e9f5db] px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wider uppercase border border-[#709775]/50 shadow-md">
-          <Sparkles className="w-3.5 h-3.5 text-[#ffd166]" />
-          <span>{chapterInfo.title}</span>
+        <div className="flex items-center gap-2 bg-[#2d5029]/85 text-[#e9f5db] px-3.5 py-1.5 rounded-full text-xs font-bold tracking-wide border border-[#709775]/50 shadow-md">
+          <Sparkles className="w-3.5 h-3.5 text-[#ffd166] shrink-0" />
+          <span>{localizedChapter.title}</span>
         </div>
 
         <div className="flex items-center gap-2">
           <button
+            type="button"
+            onClick={onToggleLang}
+            aria-label="Switch Language (Persian / English)"
+            className="px-3 py-1.5 rounded-full bg-[#1b4332]/90 border border-[#95d5b2]/60 text-[#e9f5db] text-xs font-black flex items-center gap-1.5 hover:bg-[#2d6a4f] transition-colors shadow-md cursor-pointer"
+          >
+            <Languages className="w-3.5 h-3.5 text-[#ffd166]" />
+            <span>{isFa ? 'EN / انگلیسی' : 'FA / پارسی'}</span>
+          </button>
+
+          <button
+            type="button"
             onClick={onOpenAdMobAndApk}
             aria-label="Open Android APK and Google Play AdMob Setup"
             className="px-3 py-1.5 rounded-full bg-[#1b4332]/90 border border-[#ffd166]/60 text-[#ffd166] text-xs font-bold flex items-center gap-1.5 hover:bg-[#2d6a4f] transition-colors shadow-md cursor-pointer"
           >
             <Smartphone className="w-3.5 h-3.5" />
-            <span>APK · AdMob</span>
+            <span>{isFa ? 'خروجی APK و تبلیغات' : 'APK · AdMob'}</span>
           </button>
 
           <button
+            type="button"
             onClick={onToggleMute}
             aria-label={isMuted ? 'Unmute game audio' : 'Mute game audio'}
             className="w-9 h-9 rounded-full bg-[#2d5029]/85 border border-[#709775]/50 text-[#e9f5db] flex items-center justify-center hover:bg-[#3d6b38] transition-colors shadow-md active:scale-95 cursor-pointer"
@@ -81,15 +104,17 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           </svg>
         </div>
 
-        <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-[#f4fbf1] drop-shadow-[0_3px_6px_rgba(15,35,15,0.7)] font-sans">
-          SPROUTLING
+        <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-[#f4fbf1] drop-shadow-[0_3px_6px_rgba(15,35,15,0.7)] font-sans">
+          {isFa ? 'نگهبان جوانه: بیشه جادویی' : 'SPROUTLING'}
         </h1>
-        <p className="text-xs sm:text-sm font-bold tracking-widest text-[#ffd166] uppercase mt-1 mb-2 drop-shadow-[0_2px_4px_rgba(15,35,15,0.8)]">
-          Grove Guardian 3D · {chapterInfo.subtitle}
+        <p className="text-xs sm:text-sm font-bold tracking-wider text-[#ffd166] mt-1.5 mb-2.5 drop-shadow-[0_2px_4px_rgba(15,35,15,0.8)]">
+          {isFa
+            ? `ماجراجویی سه‌بعدی · ${localizedChapter.subtitle}`
+            : `Grove Guardian 3D · ${localizedChapter.subtitle}`}
         </p>
 
-        <p className="text-xs sm:text-sm text-[#d8f3dc] max-w-md mb-5 drop-shadow-[0_2px_4px_rgba(10,25,10,0.9)] leading-relaxed bg-[#1b4332]/75 px-4 py-2.5 rounded-2xl border border-[#709775]/40">
-          {chapterInfo.storyParagraph}
+        <p className="text-xs sm:text-sm text-[#d8f3dc] max-w-md mb-5 drop-shadow-[0_2px_4px_rgba(10,25,10,0.9)] leading-relaxed bg-[#1b4332]/80 px-4 py-3 rounded-2xl border border-[#709775]/40">
+          {localizedChapter.storyParagraph}
         </p>
 
         {/* Primary Start CTA with data-start="true" */}
@@ -100,11 +125,15 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           className="w-full sm:w-auto px-10 py-3.5 bg-gradient-to-b from-[#80b918] to-[#55a630] hover:from-[#9ef01a] hover:to-[#70e000] text-[#0d2818] font-black text-base sm:text-lg tracking-wide rounded-2xl shadow-[0_6px_20px_rgba(43,84,30,0.6)] border-2 border-[#d8f3dc]/60 transition-all transform hover:-translate-y-0.5 active:translate-y-1 flex items-center justify-center gap-2 cursor-pointer"
         >
           <Compass className="w-5 h-5 text-[#0d2818]" />
-          <span>ENTER CHAPTER {chapterInfo.chapterNumber}</span>
+          <span>
+            {isFa
+              ? `ورود به فصل ${localizedChapter.chapterNumber}`
+              : `ENTER CHAPTER ${localizedChapter.chapterNumber}`}
+          </span>
         </button>
 
         {/* Secondary Action Row: Customize Hero & Home Base Sanctuary */}
-        <div className="flex items-center justify-center gap-2.5 mt-3">
+        <div className="flex flex-wrap items-center justify-center gap-2.5 mt-3">
           <button
             type="button"
             onClick={onOpenCustomizeHero}
@@ -112,7 +141,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             className="px-4 py-2 bg-[#1b4332]/90 hover:bg-[#2d6a4f] text-[#e9f5db] font-bold text-xs rounded-xl border border-[#95d5b2]/50 shadow-md flex items-center gap-1.5 cursor-pointer"
           >
             <User className="w-3.5 h-3.5 text-[#80b918]" />
-            <span>Customize Hero</span>
+            <span>{isFa ? 'شخصی‌سازی قهرمان' : 'Customize Hero'}</span>
           </button>
 
           <button
@@ -122,7 +151,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             className="px-4 py-2 bg-[#1b4332]/90 hover:bg-[#2d6a4f] text-[#e9f5db] font-bold text-xs rounded-xl border border-[#95d5b2]/50 shadow-md flex items-center gap-1.5 cursor-pointer"
           >
             <Home className="w-3.5 h-3.5 text-[#ffd166]" />
-            <span>Home Base & Trophies</span>
+            <span>{isFa ? 'پایگاه امن و تندیس‌ها' : 'Home Base & Trophies'}</span>
           </button>
         </div>
       </div>
@@ -130,7 +159,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       {/* Flat Control Hint Line */}
       <div className="text-center">
         <p className="text-[11px] sm:text-xs text-[#d8f3dc]/90 font-medium tracking-wide drop-shadow-[0_1px_3px_rgba(10,25,10,0.9)]">
-          WASD / Joystick Move · Space Whack · Shift Dash · Q Bloom Spin · E Restore · Esc Pause
+          {isFa
+            ? 'حرکت: WASD یا جوی‌استیک لمسی · ضربه: Space · جهش: Shift · چرخش شکوفه: Q · احیای نیایشگاه: E · توقف: Esc'
+            : 'WASD / Joystick Move · Space Whack · Shift Dash · Q Bloom Spin · E Restore · Esc Pause'}
         </p>
       </div>
     </div>
