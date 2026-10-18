@@ -1,0 +1,96 @@
+name: Build & Publish Android APK to GitHub Releases
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag version (e.g. v1.0.0)'
+        required: false
+        default: 'v1.0.0'
+      admob_app_id:
+        description: 'Google AdMob App ID (ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY)'
+        required: false
+        default: 'ca-app-pub-3940256099942544~3347511713'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Setup Java JDK 17 (Required for Android Gradle 8+)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Dependencies & Run Unit Tests
+        run: |
+          npm install
+          node --test src/game/rules.test.ts
+
+      - name: Build Production Web Bundle (Vite + PWA)
+        env:
+          VITE_ADMOB_APP_ID: ${{ github.event.inputs.admob_app_id || secrets.VITE_ADMOB_APP_ID || 'ca-app-pub-3940256099942544~3347511713' }}
+        run: npm run build
+
+      - name: Initialize Capacitor Android & AdMob Native SDK
+        run: |
+          npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor-community/admob
+          npx cap add android
+          npx cap sync android
+
+      - name: Inject AdMob App ID into AndroidManifest.xml
+        env:
+          ADMOB_APP_ID: ${{ github.event.inputs.admob_app_id || secrets.VITE_ADMOB_APP_ID || 'ca-app-pub-3940256099942544~3347511713' }}
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          sed -i "s|</application>|  <meta-data android:name=\"com.google.android.gms.ads.APPLICATION_ID\" android:value=\"${ADMOB_APP_ID}\"/>\n  </application>|g" "$MANIFEST"
+
+      - name: Build Android APK & Google Play AAB Bundle
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug bundleRelease
+          cp app/build/outputs/apk/debug/app-debug.apk ../Sproutling-Grove-Guardian-v1.0.0.apk
+          cp app/build/outputs/bundle/release/app-release.aab ../Sproutling-Grove-Guardian-v1.0.0.aab
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sproutling-Grove-Guardian-APK
+          path: |
+            Sproutling-Grove-Guardian-v1.0.0.apk
+            Sproutling-Grove-Guardian-v1.0.0.aab
+
+      - name: Publish Compiled APK & AAB to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name == 'main' && 'v1.0.0-latest' || github.ref_name == 'master' && 'v1.0.0-latest' || github.event.inputs.release_tag || github.ref_name }}
+          name: "Sproutling: Grove Guardian 3D — Android APK & Play Store Bundle"
+          body: |
+            ### 🌿 Sproutling: Grove Guardian 3D (Android Release)
+            - **Direct Install APK**: `Sproutling-Grove-Guardian-v1.0.0.apk`
+            - **Google Play Console Bundle**: `Sproutling-Grove-Guardian-v1.0.0.aab`
+            - **Features**: 3D Cozy Action, Character Customization, Dynamic Day/Night & Weather, Customizable Home Base Sanctuary, Google Play AdMob SDK Integration.
+          files: |
+            Sproutling-Grove-Guardian-v1.0.0.apk
+            Sproutling-Grove-Guardian-v1.0.0.aab
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
