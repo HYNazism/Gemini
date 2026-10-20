@@ -2,7 +2,19 @@
   "project": "Sproutling: Grove Guardian 3D",
   "packageId": "com.hyn198911.sproutling3d",
   "subfolder": "HYNAction1",
-  "version": "v1.4.1",
-  "updatedAt": "2026-10-20T17:21:18.343Z",
+  "version": "v1.6.1",
+  "platforms": [
+    "windows-exe",
+    "android-apk-aab",
+    "linux-appimage-deb",
+    "macos-dmg",
+    "web-pwa"
+  ],
+  "features": [
+    "sprout-buddy-companion",
+    "biome-ambient-bgm",
+    "compact-mobile-hud"
+  ],
+  "updatedAt": "2026-10-20T17:22:57.832Z",
   "publisherAccount": "hyn198911@gmail.com"
 }
