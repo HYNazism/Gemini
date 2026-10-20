@@ -1190,6 +1190,270 @@ export function getStageBiomeTheme(chapterNumber: number): StageBiomeTheme {
   return STAGE_BIOMES[(lvl - 1) % STAGE_BIOMES.length];
 }
 
+export type StageMissionMode =
+  | 'rescue_escort'
+  | 'harmonic_bells'
+  | 'heart_tree_defense'
+  | 'meteor_rush'
+  | 'boss_duel';
+
+export interface LostSproutItem {
+  id: string;
+  cageX: number;
+  cageZ: number;
+  x: number;
+  z: number;
+  state: 'caged' | 'following' | 'rescued';
+}
+
+export interface HarmonicBellItem {
+  id: string;
+  index: number;
+  x: number;
+  z: number;
+  isRung: boolean;
+}
+
+export interface DefenseTotemItem {
+  id: string;
+  x: number;
+  z: number;
+  cooldown: number;
+}
+
+export interface StarlightMeteorItem {
+  id: string;
+  x: number;
+  z: number;
+  timeRemaining: number;
+  maxTime: number;
+  collected: boolean;
+}
+
+export interface BoostPadItem {
+  id: string;
+  x: number;
+  z: number;
+  angleRad: number;
+}
+
+export interface StageMissionState {
+  mode: StageMissionMode;
+  missionTitleFa: string;
+  missionTitleEn: string;
+  missionBadgeFa: string;
+  missionBadgeEn: string;
+  currentCount: number;
+  targetCount: number;
+  // Mode 1: rescue_escort
+  lostSprouts: LostSproutItem[];
+  followingCount: number;
+  safeZoneX: number;
+  safeZoneZ: number;
+  // Mode 2: harmonic_bells
+  bells: HarmonicBellItem[];
+  allBellsRung: boolean;
+  // Mode 3: heart_tree_defense
+  heartTreeHp: number;
+  heartTreeMaxHp: number;
+  currentWave: number;
+  totalWaves: number;
+  totems: DefenseTotemItem[];
+  // Mode 4: meteor_rush
+  meteors: StarlightMeteorItem[];
+  // Shared boost pads (wind streams in Stage 2, aurora pads in Stage 4)
+  boostPads: BoostPadItem[];
+  speedBoostRemaining: number;
+  // Mode 5: boss_duel
+  bossStunRemaining: number;
+}
+
+export function getStageMissionMode(chapterNumber: number): StageMissionMode {
+  const lvl = Math.max(1, Math.floor(chapterNumber));
+  const modes: StageMissionMode[] = [
+    'rescue_escort',
+    'harmonic_bells',
+    'heart_tree_defense',
+    'meteor_rush',
+    'boss_duel',
+  ];
+  return modes[(lvl - 1) % modes.length];
+}
+
+export function createInitialMissionState(chapterNumber: number): StageMissionState {
+  const mode = getStageMissionMode(chapterNumber);
+
+  const lostSprouts: LostSproutItem[] = [
+    { id: 'sprout-1', cageX: -22, cageZ: -16, x: -22, z: -16, state: 'caged' },
+    { id: 'sprout-2', cageX: 22, cageZ: -16, x: 22, z: -16, state: 'caged' },
+    { id: 'sprout-3', cageX: 0, cageZ: -26, x: 0, z: -26, state: 'caged' },
+  ];
+
+  const bells: HarmonicBellItem[] = [
+    { id: 'bell-1', index: 1, x: -21, z: -19, isRung: false },
+    { id: 'bell-2', index: 2, x: 21, z: -19, isRung: false },
+    { id: 'bell-3', index: 3, x: 21, z: 17, isRung: false },
+    { id: 'bell-4', index: 4, x: -21, z: 17, isRung: false },
+  ];
+
+  const totems: DefenseTotemItem[] = [
+    { id: 'totem-1', x: -8.5, z: -6.5, cooldown: 0 },
+    { id: 'totem-2', x: 8.5, z: -6.5, cooldown: 0 },
+    { id: 'totem-3', x: 0, z: 9.5, cooldown: 0 },
+  ];
+
+  const meteors: StarlightMeteorItem[] = [
+    { id: 'meteor-1', x: -18, z: -14, timeRemaining: 28, maxTime: 28, collected: false },
+    { id: 'meteor-2', x: 19, z: -12, timeRemaining: 25, maxTime: 28, collected: false },
+    { id: 'meteor-3', x: 0, z: -24, timeRemaining: 22, maxTime: 28, collected: false },
+  ];
+
+  const boostPads: BoostPadItem[] =
+    mode === 'harmonic_bells'
+      ? [
+          { id: 'wind-1', x: -11, z: -9, angleRad: -Math.PI / 4 },
+          { id: 'wind-2', x: 11, z: -9, angleRad: Math.PI / 4 },
+          { id: 'wind-3', x: 11, z: 9, angleRad: (3 * Math.PI) / 4 },
+          { id: 'wind-4', x: -11, z: 9, angleRad: (-3 * Math.PI) / 4 },
+        ]
+      : mode === 'meteor_rush'
+      ? [
+          { id: 'aurora-1', x: -10, z: 0, angleRad: -Math.PI / 2 },
+          { id: 'aurora-2', x: 10, z: 0, angleRad: Math.PI / 2 },
+          { id: 'aurora-3', x: 0, z: -10, angleRad: Math.PI },
+          { id: 'aurora-4', x: 0, z: 10, angleRad: 0 },
+        ]
+      : [];
+
+  switch (mode) {
+    case 'rescue_escort':
+      return {
+        mode,
+        missionTitleFa: 'نجات و هدایت ۳ جوانه گمشده به کلبه امن',
+        missionTitleEn: 'Rescue & Escort 3 Lost Sproutlings to the Safe Cottage',
+        missionBadgeFa: 'ماموریت نجات و اسکورت',
+        missionBadgeEn: 'Rescue & Escort Mission',
+        currentCount: 0,
+        targetCount: 3,
+        lostSprouts,
+        followingCount: 0,
+        safeZoneX: 0,
+        safeZoneZ: 13.5,
+        bells: [],
+        allBellsRung: false,
+        heartTreeHp: 100,
+        heartTreeMaxHp: 100,
+        currentWave: 1,
+        totalWaves: 3,
+        totems: [],
+        meteors: [],
+        boostPads: [],
+        speedBoostRemaining: 0,
+        bossStunRemaining: 0,
+      };
+    case 'harmonic_bells':
+      return {
+        mode,
+        missionTitleFa: 'گذر از تندباد ساکورا و نواختن ۴ زنگوله باستانی',
+        missionTitleEn: 'Ride Wind Streams & Ring 4 Ancient Harmonic Bells',
+        missionBadgeFa: 'پازل زنگوله‌ها و پل نوری',
+        missionBadgeEn: 'Harmonic Bells & Wind Puzzle',
+        currentCount: 0,
+        targetCount: 4,
+        lostSprouts: [],
+        followingCount: 0,
+        safeZoneX: 0,
+        safeZoneZ: 13.5,
+        bells,
+        allBellsRung: false,
+        heartTreeHp: 100,
+        heartTreeMaxHp: 100,
+        currentWave: 1,
+        totalWaves: 3,
+        totems: [],
+        meteors: [],
+        boostPads,
+        speedBoostRemaining: 0,
+        bossStunRemaining: 0,
+      };
+    case 'heart_tree_defense':
+      return {
+        mode,
+        missionTitleFa: 'دفاع از درخت قلب کهربایی در برابر ۳ موج مهاجمان',
+        missionTitleEn: 'Defend the Amber Heart-Tree Against 3 Critter Waves',
+        missionBadgeFa: 'دفاع از درخت قلب',
+        missionBadgeEn: 'Heart-Tree Wave Defense',
+        currentCount: 0,
+        targetCount: 9,
+        lostSprouts: [],
+        followingCount: 0,
+        safeZoneX: 0,
+        safeZoneZ: 13.5,
+        bells: [],
+        allBellsRung: false,
+        heartTreeHp: 100,
+        heartTreeMaxHp: 100,
+        currentWave: 1,
+        totalWaves: 3,
+        totems,
+        meteors: [],
+        boostPads: [],
+        speedBoostRemaining: 0,
+        bossStunRemaining: 0,
+      };
+    case 'meteor_rush':
+      return {
+        mode,
+        missionTitleFa: 'شکار ۶ شهاب‌سنگ ستاره‌ای پیش از خاموش شدن نورشان',
+        missionTitleEn: 'Catch 6 Falling Starlight Meteors Before They Fade',
+        missionBadgeFa: 'شهاب‌باران شفق قطبی',
+        missionBadgeEn: 'Starlight Meteor Rush',
+        currentCount: 0,
+        targetCount: 6,
+        lostSprouts: [],
+        followingCount: 0,
+        safeZoneX: 0,
+        safeZoneZ: 13.5,
+        bells: [],
+        allBellsRung: false,
+        heartTreeHp: 100,
+        heartTreeMaxHp: 100,
+        currentWave: 1,
+        totalWaves: 3,
+        totems: [],
+        meteors,
+        boostPads,
+        speedBoostRemaining: 0,
+        bossStunRemaining: 0,
+      };
+    case 'boss_duel':
+      return {
+        mode,
+        missionTitleFa: 'نبرد مستقیم با غول نگهبان با کمک ستون‌های اخترتاب',
+        missionTitleEn: 'Cleanse the Astral Bramble-King Using Starlight Pillars',
+        missionBadgeFa: 'میدان نبرد غول نگهبان',
+        missionBadgeEn: 'Celestial Boss Arena',
+        currentCount: 0,
+        targetCount: 1,
+        lostSprouts: [],
+        followingCount: 0,
+        safeZoneX: 0,
+        safeZoneZ: 13.5,
+        bells: [],
+        allBellsRung: false,
+        heartTreeHp: 100,
+        heartTreeMaxHp: 100,
+        currentWave: 1,
+        totalWaves: 1,
+        totems: [],
+        meteors: [],
+        boostPads: [],
+        speedBoostRemaining: 0,
+        bossStunRemaining: 0,
+      };
+  }
+}
+
 export interface ChapterStoryInfo {
   chapterNumber: number;
   title: string;
@@ -1204,6 +1468,11 @@ export interface ChapterStoryInfo {
   biomeNameFa: string;
   biomeNameEn: string;
   enemySpeedScale: number;
+  missionMode: StageMissionMode;
+  missionTitleFa: string;
+  missionTitleEn: string;
+  missionBadgeFa: string;
+  missionBadgeEn: string;
 }
 
 export type StoryTriggerEvent =
@@ -1283,11 +1552,13 @@ const CHAPTER_SPIRITS = [
 ];
 
 /**
- * Deterministically generates accessible, genuinely distinct chapters with unique biomes & creatures
+ * Deterministically generates accessible, genuinely distinct chapters with unique biomes,
+ * 3D map layouts, and non-repetitive gameplay missions for each stage.
  */
 export function generateChapterInfo(chapterNumber: number): ChapterStoryInfo {
   const lvl = Math.max(1, Math.floor(chapterNumber));
   const biome = getStageBiomeTheme(lvl);
+  const mission = createInitialMissionState(lvl);
   const adj = CHAPTER_ADJECTIVES[(lvl - 1) % CHAPTER_ADJECTIVES.length];
   const place = CHAPTER_PLACES[(lvl - 1) % CHAPTER_PLACES.length];
   const spirit = CHAPTER_SPIRITS[(lvl - 1) % CHAPTER_SPIRITS.length];
@@ -1298,22 +1569,24 @@ export function generateChapterInfo(chapterNumber: number): ChapterStoryInfo {
   const featuredWeather = weathers[(lvl - 1) % weathers.length];
   const featuredTimePhase = phases[(lvl - 1) % phases.length];
 
-  // Accessible & easy progression: only 1 seed per shrine in Chapters 1-2, 2 seeds in Chapters 3-5, max 3 later
   const seedsPerShrine = lvl <= 2 ? 1 : lvl <= 5 ? 2 : 3;
-  const enemyCount = Math.min(9, 4 + Math.floor(lvl * 0.8));
-  const bossMaxHp = Math.min(18, 5 + Math.floor(lvl * 1.5));
-  const enemySpeedScale = Math.min(1.12, 0.76 + (lvl - 1) * 0.05);
+  const enemyCount = mission.mode === 'heart_tree_defense' ? 3 : Math.min(8, 4 + Math.floor(lvl * 0.6));
+  const bossMaxHp = Math.min(18, 6 + Math.floor(lvl * 1.2));
+  const enemySpeedScale = Math.min(1.08, 0.74 + (lvl - 1) * 0.04);
 
-  const storyParagraph =
-    lvl === 1
-      ? `Pip awakens in ${biome.nameEn}. Playful forest creatures have dimmed the 4 Ancient Shrines and tangled the ${spirit}. Gather glowing Sun-Seeds (just 1 per Shrine!) to awaken the grove!`
-      : `A shimmering portal opens into Chapter ${lvl}: ${biome.nameEn}. Explore this new realm, meet its enchanted creatures, and awaken 4 sacred shrines with your Acorn Wand to free the ${spirit}!`;
+  const storyByMode: Record<StageMissionMode, string> = {
+    rescue_escort: `Chapter ${lvl} (${biome.nameEn}): Three baby Grove Sproutlings are trapped in thorny cages! Break their cages with your Acorn Wand and escort their hopping caravan safely back to your Sanctuary Cottage!`,
+    harmonic_bells: `Chapter ${lvl} (${biome.nameEn}): Ride the pink Sakura wind-streams across crystal bridges and ring all 4 Ancient Harmonic Chime Bells to awaken the Grand Sakura Pavilion at the center!`,
+    heart_tree_defense: `Chapter ${lvl} (${biome.nameEn}): Autumn rollers are marching toward the Ancient Amber Heart-Tree at the center! Strike the 3 Golden Pulse Totems and defend the Heart-Tree across 3 short waves!`,
+    meteor_rush: `Chapter ${lvl} (${biome.nameEn}): Glowing Starlight Meteors are falling across the Aurora Frostveil Basin! Dash across the icy speed-boost pads and catch 6 Starlight Meteors before their glow fades!`,
+    boss_duel: `Chapter ${lvl} (${biome.nameEn}): Enter the Celestial Resonance Arena! Strike the Astral Pillars to stun the Ancient Bramble-King, shatter his dark armor, and restore the Astral Oasis!`,
+  };
 
   return {
     chapterNumber: lvl,
     title: `Chapter ${lvl}: ${adj} ${place}`,
-    subtitle: `${biome.nameEn} · ${spirit}`,
-    storyParagraph,
+    subtitle: `${biome.nameEn} · ${mission.missionBadgeEn}`,
+    storyParagraph: storyByMode[mission.mode],
     featuredWeather,
     featuredTimePhase,
     seedsPerShrine,
@@ -1323,12 +1596,17 @@ export function generateChapterInfo(chapterNumber: number): ChapterStoryInfo {
     biomeNameFa: biome.nameFa,
     biomeNameEn: biome.nameEn,
     enemySpeedScale,
+    missionMode: mission.mode,
+    missionTitleFa: mission.missionTitleFa,
+    missionTitleEn: mission.missionTitleEn,
+    missionBadgeFa: mission.missionBadgeFa,
+    missionBadgeEn: mission.missionBadgeEn,
   };
 }
 
 /**
  * Computes the live step-by-step stage progression guide and 3D compass target
- * so the player always knows how to finish the current chapter and advance to the next stage.
+ * tailored to each stage's unique mission mode (or fallback shrine/boss mode).
  */
 export function computeStageObjectiveGuide(params: {
   playerX: number;
@@ -1339,15 +1617,309 @@ export function computeStageObjectiveGuide(params: {
   bossMaxHp: number;
   bossCleansed: boolean;
   chapterNumber: number;
+  missionState?: StageMissionState;
 }): StageObjectiveGuide {
-  const { playerX, playerZ, sunSeeds, shrines, bossHp, bossMaxHp, bossCleansed, chapterNumber } = params;
+  const {
+    playerX,
+    playerZ,
+    sunSeeds,
+    shrines,
+    bossHp,
+    bossMaxHp,
+    bossCleansed,
+    chapterNumber,
+    missionState,
+  } = params;
+
+  // If missionState is provided, compute dynamic guidance for the 5 distinct stage gameplay modes!
+  if (missionState) {
+    const mode = missionState.mode;
+
+    // ------------------------------------------------------------------------
+    // STAGE MODE 1: RESCUE & ESCORT LOST SPROUTLINGS
+    // ------------------------------------------------------------------------
+    if (mode === 'rescue_escort') {
+      const rescued = missionState.currentCount;
+      const total = missionState.targetCount;
+      const following = missionState.lostSprouts.filter((s) => s.state === 'following');
+      const caged = missionState.lostSprouts.filter((s) => s.state === 'caged');
+
+      if (rescued >= total) {
+        return {
+          currentStep: 3,
+          totalSteps: 3,
+          progressPercent: 100,
+          targetX: missionState.safeZoneX,
+          targetZ: missionState.safeZoneZ,
+          distanceMeters: 0,
+          angleToTargetRad: 0,
+          bossShieldActive: false,
+          headlineFa: `فصل ${chapterNumber} کامل شد! هر ۳ جوانه به خانه امن رسیدند`,
+          headlineEn: `Chapter ${chapterNumber} Complete! All 3 Sproutlings Rescued`,
+          sublineFa: `آفرین! کاروان جوانه‌ها در امنیت کامل هستند.`,
+          sublineEn: `Wonderful! All lost sproutlings are safe in the Sanctuary Cottage.`,
+        };
+      }
+
+      // If any sproutling is currently following Pip and no more caged ones are nearby, or all remaining are following -> guide to Safe Cottage!
+      if (following.length > 0 && (caged.length === 0 || following.length >= 2)) {
+        const tx = missionState.safeZoneX;
+        const tz = missionState.safeZoneZ;
+        const dist = Math.round(distance(playerX, playerZ, tx, tz));
+        const angle = Math.atan2(tx - playerX, tz - playerZ);
+        const pct = Math.min(95, Math.round(((rescued + following.length * 0.5) / total) * 100));
+        return {
+          currentStep: 2,
+          totalSteps: 3,
+          progressPercent: pct,
+          targetX: tx,
+          targetZ: tz,
+          distanceMeters: dist,
+          angleToTargetRad: angle,
+          bossShieldActive: false,
+          headlineFa: `اسکورت به کلبه امن (${rescued}/${total} نجات‌یافته · ${following.length} دنبال‌کننده)`,
+          headlineEn: `Escort to Safe Cottage (${rescued}/${total} Rescued · ${following.length} Following)`,
+          sublineFa: `جوانه‌های آزادشده پشت سر شما می‌پرند! آن‌ها را به حیاط کلبه امن (${dist} متر) ببرید.`,
+          sublineEn: `The freed sproutlings are hopping behind you! Lead them to the Safe Cottage (${dist}m).`,
+        };
+      }
+
+      // Otherwise point to nearest caged sproutling
+      let nearest = caged[0];
+      let minDist = Infinity;
+      for (const c of caged) {
+        const d = distance(playerX, playerZ, c.cageX, c.cageZ);
+        if (d < minDist) {
+          minDist = d;
+          nearest = c;
+        }
+      }
+      const tx = nearest ? nearest.cageX : missionState.safeZoneX;
+      const tz = nearest ? nearest.cageZ : missionState.safeZoneZ;
+      const dist = Math.round(distance(playerX, playerZ, tx, tz));
+      const angle = Math.atan2(tx - playerX, tz - playerZ);
+      const pct = Math.round(((rescued + following.length * 0.4) / total) * 100);
+
+      return {
+        currentStep: 1,
+        totalSteps: 3,
+        progressPercent: pct,
+        targetX: tx,
+        targetZ: tz,
+        distanceMeters: dist,
+        angleToTargetRad: angle,
+        bossShieldActive: false,
+        headlineFa: `ماموریت نجات: رهاسازی جوانه‌های گمشده (${rescued}/${total} در کلبه امن)`,
+        headlineEn: `Rescue Mission: Free Lost Sproutlings (${rescued}/${total} Safe)`,
+        sublineFa:
+          dist <= 4
+            ? `کنار قفس خاردار هستید! دکمه ضربه (Space) یا تعامل (E) را بزنید تا جوانه آزاد شود!`
+            : following.length > 0
+            ? `می‌توانید جوانه همراهتان را به کلبه امن ببرید یا قفس بعدی (${dist} متر) را بشکنید!`
+            : `پیکان طلایی را تا قفس خاردار (${dist} متر) دنبال کنید و با عصا آن را بشکنید.`,
+        sublineEn:
+          dist <= 4
+            ? `Near Bramble Cage! Strike [Space] or press [E] to free the Lost Sproutling!`
+            : `Follow the golden arrow to the Bramble Cage (${dist}m) and break it open!`,
+      };
+    }
+
+    // ------------------------------------------------------------------------
+    // STAGE MODE 2: HARMONIC CHIME BELLS & WIND STREAMS
+    // ------------------------------------------------------------------------
+    if (mode === 'harmonic_bells') {
+      const rung = missionState.currentCount;
+      const total = missionState.targetCount;
+      const unrung = missionState.bells.filter((b) => !b.isRung);
+
+      if (unrung.length > 0) {
+        let nearest = unrung[0];
+        let minDist = Infinity;
+        for (const b of unrung) {
+          const d = distance(playerX, playerZ, b.x, b.z);
+          if (d < minDist) {
+            minDist = d;
+            nearest = b;
+          }
+        }
+        const dist = Math.round(distance(playerX, playerZ, nearest.x, nearest.z));
+        const angle = Math.atan2(nearest.x - playerX, nearest.z - playerZ);
+        const pct = Math.round((rung / total) * 80);
+
+        return {
+          currentStep: 1,
+          totalSteps: 3,
+          progressPercent: pct,
+          targetX: nearest.x,
+          targetZ: nearest.z,
+          distanceMeters: dist,
+          angleToTargetRad: angle,
+          bossShieldActive: false,
+          headlineFa: `پازل ساکورا: نواختن زنگوله‌های باستانی (${rung}/${total})`,
+          headlineEn: `Sakura Puzzle: Ring Ancient Chime Bells (${rung}/${total})`,
+          sublineFa:
+            dist <= 4.5
+              ? `کنار برجک زنگوله هستید! ضربه (Space) یا دکمه (E) را بزنید تا طنین زنگوله پل نوری را روشن کند!`
+              : `از دالان‌های باد صورتی برای سرعت گرفتن عبور کنید و زنگوله بعدی (${dist} متر) را به صدا درآورید.`,
+          sublineEn:
+            dist <= 4.5
+              ? `At the Chime Bell! Strike [Space] or press [E] to ring the bell and light the crystal bridge!`
+              : `Glide through pink wind-streams and ring the next Ancient Chime Bell (${dist}m).`,
+        };
+      }
+
+      // All 4 bells rung -> Step into the Grand Sakura Pavilion at (0, 0)
+      const distCenter = Math.round(distance(playerX, playerZ, 0, 0));
+      const angleCenter = Math.atan2(0 - playerX, 0 - playerZ);
+      return {
+        currentStep: 2,
+        totalSteps: 3,
+        progressPercent: 92,
+        targetX: 0,
+        targetZ: 0,
+        distanceMeters: distCenter,
+        angleToTargetRad: angleCenter,
+        bossShieldActive: false,
+        headlineFa: `گام نهایی: ورود به معبد زنگ ساکورا در مرکز (${distCenter} متر)`,
+        headlineEn: `Final Step: Enter the Central Sakura Pavilion (${distCenter}m)`,
+        sublineFa: `هر ۴ پل نوری روشن شدند! از روی پل بلورین به معبد مرکزی ساکورا بروید تا مرحله کامل شود.`,
+        sublineEn: `All 4 crystal bridges shine! Cross to the central Sakura Pavilion to complete the stage.`,
+      };
+    }
+
+    // ------------------------------------------------------------------------
+    // STAGE MODE 3: HEART-TREE SANCTUARY WAVE DEFENSE
+    // ------------------------------------------------------------------------
+    if (mode === 'heart_tree_defense') {
+      const cleansed = missionState.currentCount;
+      const target = missionState.targetCount;
+      const distCenter = Math.round(distance(playerX, playerZ, 0, 0));
+      const angleCenter = Math.atan2(0 - playerX, 0 - playerZ);
+      const pct = Math.min(98, Math.round((cleansed / Math.max(1, target)) * 100));
+
+      return {
+        currentStep: missionState.currentWave as 1 | 2 | 3,
+        totalSteps: 3,
+        progressPercent: pct,
+        targetX: 0,
+        targetZ: 0,
+        distanceMeters: distCenter,
+        angleToTargetRad: angleCenter,
+        bossShieldActive: false,
+        headlineFa: `دفاع از درخت قلب کهربایی · موج ${missionState.currentWave} از ${missionState.totalWaves} (جان درخت: ${Math.ceil(missionState.heartTreeHp)}%)`,
+        headlineEn: `Defend the Heart-Tree · Wave ${missionState.currentWave}/${missionState.totalWaves} (Tree HP: ${Math.ceil(missionState.heartTreeHp)}%)`,
+        sublineFa: `مهاجمان (${cleansed}/${target} پاکسازی‌شده) به سمت مرکز می‌آیند! به آن‌ها ضربه بزنید یا توتم‌های طلایی اطراف درخت را فعال کنید.`,
+        sublineEn: `Cleanse incoming critters (${cleansed}/${target}) or strike the Golden Pulse Totems around the Heart-Tree!`,
+      };
+    }
+
+    // ------------------------------------------------------------------------
+    // STAGE MODE 4: FALLING STARLIGHT METEOR HARVEST RACE
+    // ------------------------------------------------------------------------
+    if (mode === 'meteor_rush') {
+      const collected = missionState.currentCount;
+      const target = missionState.targetCount;
+      const activeMeteors = missionState.meteors.filter((m) => !m.collected);
+      let nearest = activeMeteors[0];
+      let minDist = Infinity;
+      for (const m of activeMeteors) {
+        const d = distance(playerX, playerZ, m.x, m.z);
+        if (d < minDist) {
+          minDist = d;
+          nearest = m;
+        }
+      }
+      const tx = nearest ? nearest.x : 0;
+      const tz = nearest ? nearest.z : 0;
+      const dist = Math.round(distance(playerX, playerZ, tx, tz));
+      const angle = Math.atan2(tx - playerX, tz - playerZ);
+      const timerSec = nearest ? Math.ceil(nearest.timeRemaining) : 20;
+      const pct = Math.min(98, Math.round((collected / Math.max(1, target)) * 100));
+
+      return {
+        currentStep: collected < 3 ? 1 : 2,
+        totalSteps: 3,
+        progressPercent: pct,
+        targetX: tx,
+        targetZ: tz,
+        distanceMeters: dist,
+        angleToTargetRad: angle,
+        bossShieldActive: false,
+        headlineFa: `شهاب‌باران شفق قطبی: جذب شهاب‌های ستاره‌ای (${collected}/${target})`,
+        headlineEn: `Aurora Meteor Rush: Catch Falling Starlight Meteors (${collected}/${target})`,
+        sublineFa: `پیکان طلایی را تا شهاب‌سنگ بعدی (${dist} متر · ${timerSec} ثانیه تا خاموشی) دنبال کنید! از سکوهای یخی برای شتاب بگیرید.`,
+        sublineEn: `Dash to the nearest Starlight Meteor (${dist}m · ${timerSec}s left)! Step on icy Aurora Pads for a speed boost.`,
+      };
+    }
+
+    // ------------------------------------------------------------------------
+    // STAGE MODE 5: CELESTIAL BOSS ARENA DUEL
+    // ------------------------------------------------------------------------
+    if (mode === 'boss_duel') {
+      const unlitShrines = shrines.filter((s) => !s.isRestored);
+      const distToBoss = Math.round(distance(playerX, playerZ, 0, 0));
+      const angleToBoss = Math.atan2(0 - playerX, 0 - playerZ);
+      const bossFraction = bossMaxHp > 0 ? Math.max(0, Math.min(1, (bossMaxHp - bossHp) / bossMaxHp)) : 0;
+      const pct = bossCleansed ? 100 : Math.min(98, Math.round(bossFraction * 100));
+
+      if (!bossCleansed && missionState.bossStunRemaining <= 0 && unlitShrines.length > 0 && bossHp > bossMaxHp * 0.35) {
+        let nearestPillar = unlitShrines[0];
+        let minD = Infinity;
+        for (const p of unlitShrines) {
+          const d = distance(playerX, playerZ, p.x, p.z);
+          if (d < minD) {
+            minD = d;
+            nearestPillar = p;
+          }
+        }
+        const pDist = Math.round(distance(playerX, playerZ, nearestPillar.x, nearestPillar.z));
+        const pAngle = Math.atan2(nearestPillar.x - playerX, nearestPillar.z - playerZ);
+
+        return {
+          currentStep: 1,
+          totalSteps: 3,
+          progressPercent: pct,
+          targetX: nearestPillar.x,
+          targetZ: nearestPillar.z,
+          distanceMeters: pDist,
+          angleToTargetRad: pAngle,
+          bossShieldActive: true,
+          headlineFa: `میدان غول اخترتاب: فعال‌سازی ستون تشدید نور (${pDist} متر) یا ضربه به غول`,
+          headlineEn: `Celestial Boss Duel: Strike Starlight Pillar (${pDist}m) to Stun Boss`,
+          sublineFa: `به ستون اخترتاب (${pDist} متر) ضربه بزنید یا کلید E را بزنید (بدون نیاز به بذر!) تا غول گیج شده و ۳ برابر آسیب ببیند!`,
+          sublineEn: `Strike or press [E] at the Starlight Pillar (${pDist}m, no seeds needed!) to stun the Boss for 3x damage!`,
+        };
+      }
+
+      return {
+        currentStep: 2,
+        totalSteps: 3,
+        progressPercent: pct,
+        targetX: 0,
+        targetZ: 0,
+        distanceMeters: distToBoss,
+        angleToTargetRad: angleToBoss,
+        bossShieldActive: false,
+        headlineFa: `نبرد نهایی اخترتاب: پاکسازی پادشاه خارها (جان غول: ${Math.ceil(bossHp)}/${bossMaxHp})`,
+        headlineEn: `Celestial Boss Duel: Cleanse the Bramble-King (HP: ${Math.ceil(bossHp)}/${bossMaxHp})`,
+        sublineFa:
+          missionState.bossStunRemaining > 0
+            ? `غول گیج شده است (${Math.ceil(missionState.bossStunRemaining)} ثانیه)! همین حالا در مرکز میدان با Space یا Q به او ضربه بزنید!`
+            : `پیکان طلایی را به مرکز میدان (${distToBoss} متر) دنبال کنید و پادشاه خارها را پاکسازی کنید!`,
+        sublineEn:
+          missionState.bossStunRemaining > 0
+            ? `Boss is STUNNED (${Math.ceil(missionState.bossStunRemaining)}s)! Strike now with [Space] or [Q] for triple damage!`
+            : `Attack the Bramble-King at the center (${distToBoss}m) with [Space] or [Q]!`,
+      };
+    }
+  }
+
   const totalShrines = shrines.length || 4;
   const restoredShrines = shrines.filter((s) => s.isRestored).length;
   const shrineFraction = totalShrines > 0 ? restoredShrines / totalShrines : 0;
   const bossFraction = bossMaxHp > 0 ? Math.max(0, Math.min(1, (bossMaxHp - bossHp) / bossMaxHp)) : 0;
 
   if (restoredShrines < totalShrines) {
-    // Find nearest unrestored shrine
     let nearestShrine: Shrine | null = null;
     let minDist = Infinity;
     for (const s of shrines) {
@@ -1450,135 +2022,153 @@ export function computeStageObjectiveGuide(params: {
 }
 
 /**
- * Generates contextual, chapter-aware live narrative dialogue beats during gameplay.
+ * Generates contextual, stage-mission-aware narrative dialogue beats during gameplay.
  */
 export function getInGameStoryBeat(
   chapterNumber: number,
   trigger: StoryTriggerEvent
 ): InGameStoryBeat {
   const lvl = Math.max(1, Math.floor(chapterNumber));
-  const spiritEn = CHAPTER_SPIRITS[((lvl - 1) * 5) % CHAPTER_SPIRITS.length];
-  const placeEn = CHAPTER_PLACES[((lvl - 1) * 3) % CHAPTER_PLACES.length];
+  const mode = getStageMissionMode(lvl);
+  const biome = getStageBiomeTheme(lvl);
 
-  const faSpirits = [
-    'روح بلوط کهنسال',
-    'مرغ نغمه‌خوان سحر',
-    'بانوی کرم‌های شب‌تاب',
-    'بافنده خورشید باستان',
-    'نگهبان شبنم',
-    'لاک‌پشت خزه‌ای خفته',
-    'گوزن گلبرگ‌ستاره',
-    'جغد زنگوله‌باد',
-  ];
-  const faPlaces = [
-    'مرغزار',
-    'بیشه بید',
-    'دره عسل',
-    'پناهگاه شکوفه',
-    'دره سرخس',
-    'تاج خزه‌ای',
-    'باغ فانوس',
-    'گذرگاه تمشک',
-    'حوضچه بذر خورشید',
-    'باغستان ارواح',
-  ];
-  const spiritFa = faSpirits[((lvl - 1) * 5) % faSpirits.length];
-  const placeFa = faPlaces[((lvl - 1) * 3) % faPlaces.length];
+  if (trigger === 'chapter_start') {
+    switch (mode) {
+      case 'rescue_escort':
+        return {
+          id: 'chapter_start',
+          stepIndex: 1,
+          totalSteps: 4,
+          speakerFa: 'روح بلوط کهنسال',
+          speakerEn: 'Elder Oak Spirit',
+          textFa: `«ای جوانه نگهبان! در ${biome.nameFa} نیازی به روشن کردن نیایشگاه‌ها نیست؛ ۳ جوانه کوچک در قفس‌های خاردار اسیر شده‌اند! قفس‌هایشان را بشکن تا پشت سرت به کلبه امن بیایند.»`,
+          textEn: `"Little Guardian! In ${biome.nameEn}, 3 baby Sproutlings are trapped in thorny cages! Break their cages and escort them back to your Safe Cottage!"`,
+          hintFa: 'هدف مرحله ۱: ۳ قفس خاردار را بشکنید و جوانه‌ها را به حیاط کلبه امن ببرید.',
+          hintEn: 'Stage 1 Goal: Break 3 Bramble Cages and escort the Sproutlings to the Safe Cottage.',
+        };
+      case 'harmonic_bells':
+        return {
+          id: 'chapter_start',
+          stepIndex: 1,
+          totalSteps: 4,
+          speakerFa: 'مرغ نغمه‌خوان ساکورا',
+          speakerEn: 'Sakura Songbird',
+          textFa: `«به ${biome.nameFa} خوش آمدی! در این دره، از دالان‌های باد صورتی عبور کن و ۴ زنگوله باستانی را به صدا درآور تا پل‌های بلورین به سوی معبد مرکزی روشن شوند!»`,
+          textEn: `"Welcome to ${biome.nameEn}! Glide through the pink wind-streams and ring all 4 Ancient Chime Bells to illuminate the crystal bridges to the central Pavilion!"`,
+          hintFa: 'هدف مرحله ۲: ۴ زنگوله باستانی را با ضربه یا کلید E بنوازید و وارد معبد مرکزی شوید.',
+          hintEn: 'Stage 2 Goal: Ring 4 Ancient Chime Bells [Space/E] and step into the central Pavilion.',
+        };
+      case 'heart_tree_defense':
+        return {
+          id: 'chapter_start',
+          stepIndex: 1,
+          totalSteps: 4,
+          speakerFa: 'بانوی کرم‌های شب‌تاب',
+          speakerEn: 'Lady of the Fireflies',
+          textFa: `«در مرکز ${biome.nameFa}، درخت قلب کهربایی هدف ۳ موج از مهاجمان قرار گرفته است! در کنار درخت بمان، توتم‌های موج نوری را فعال کن و مهاجمان را دفع کن!»`,
+          textEn: `"At the heart of ${biome.nameEn}, the Amber Heart-Tree faces 3 waves of rollers! Guard the tree and strike the Golden Pulse Totems to unleash healing shockwaves!"`,
+          hintFa: 'هدف مرحله ۳: محافظت از درخت قلب در برابر ۳ موج کوتاه مهاجمان (۹ مهاجم).',
+          hintEn: 'Stage 3 Goal: Defend the central Heart-Tree across 3 short waves (9 critters).',
+        };
+      case 'meteor_rush':
+        return {
+          id: 'chapter_start',
+          stepIndex: 1,
+          totalSteps: 4,
+          speakerFa: 'گوزن بلورین شفق',
+          speakerEn: 'Frost-Crystal Stag',
+          textFa: `«آسمان ${biome.nameFa} غرق در شهاب‌باران است! روی سکوهای یخی شتاب‌دهنده بپر و ۶ شهاب‌سنگ ستاره‌ای را پیش از آنکه درخشش آن‌ها در برف خاموش شود جمع کن!»`,
+          textEn: `"Starlight Meteors are falling across ${biome.nameEn}! Dash over the icy Aurora Boost Pads and catch 6 glowing meteors before their light fades!"`,
+          hintFa: 'هدف مرحله ۴: جذب ۶ شهاب‌سنگ درخشان در زمان محدود با کمک سکوهای سرعت.',
+          hintEn: 'Stage 4 Goal: Catch 6 falling Starlight Meteors before their timers expire.',
+        };
+      case 'boss_duel':
+        return {
+          id: 'chapter_start',
+          stepIndex: 1,
+          totalSteps: 4,
+          speakerFa: 'بافنده اخترتاب کیهانی',
+          speakerEn: 'Astral Sun-Weaver',
+          textFa: `«به میدان نهایی در ${biome.nameFa} رسیدی! پادشاه خارهای باستانی در مرکز میدان منتظر توست. ستون‌های تشدید اطراف را بدون نیاز به بذر فعال کن تا غول گیج و بی‌دفاع شود!»`,
+          textEn: `"You have reached the Celestial Arena of ${biome.nameEn}! Strike the Starlight Pillars (no seeds needed!) to stun the Ancient Bramble-King and cleanse him!"`,
+          hintFa: 'هدف مرحله ۵: فعال کردن ستون‌های تشدید نور و شکست دادن غول نگهبان.',
+          hintEn: 'Stage 5 Goal: Activate Starlight Pillars to stun the Boss and defeat him.',
+        };
+    }
+  }
 
   switch (trigger) {
-    case 'chapter_start':
-      return {
-        id: 'chapter_start',
-        stepIndex: 1,
-        totalSteps: 6,
-        speakerFa: spiritFa,
-        speakerEn: spiritEn,
-        textFa: `«ای جوانه نگهبان! در فصل ${lvl} (${placeFa})، خارهای تاریک مرا در مرکز بیشه به بند کشیده‌اند. تا زمانی که ۴ نیایشگاه اطراف خاموش‌اند، سپر خاردار من نفوذناپذیر است!»`,
-        textEn: `"Little Guardian! In Chapter ${lvl} (${placeEn}), dark brambles have bound me at the center. While the 4 Ancient Shrines remain dim, the thorny barrier shields the corruption!"`,
-        hintFa: 'برای رفتن به مرحله بعد: ابتدا بذرهای طلایی را به ۴ نیایشگاه ببرید (کلید E).',
-        hintEn: 'To advance stage: Gather Golden Sun-Seeds and restore all 4 Shrines [E].',
-      };
     case 'first_seed':
       return {
         id: 'first_seed',
         stepIndex: 2,
-        totalSteps: 6,
+        totalSteps: 4,
         speakerFa: 'پیپ (نگهبان جوانه)',
         speakerEn: 'Pip (Grove Guardian)',
-        textFa: `«نور این بذر خورشید در عصای بلوطم طنین انداخت! اگر آن را به نزدیک‌ترین نیایشگاه سنگی ببرم، ریشه‌های خشکیده دوباره جان می‌گیرند.»`,
-        textEn: `"This Sun-Seed hums with warm light! If I carry it to the nearest stone Shrine and press [E], the ancient roots will awaken."`,
-        hintFa: 'پیکان طلایی پای پیپ جهت نزدیک‌ترین نیایشگاه را نشان می‌دهد.',
-        hintEn: 'Follow the golden compass arrow at Pip’s feet to the nearest Shrine.',
+        textFa: `«انرژی درخشان بیشه همراه من است! بیایید ماموریت ویژه این مرحله (${biome.nameFa}) را به سرانجام برسانیم!»`,
+        textEn: `"The grove's radiant energy is with me! Let's complete the special mission of ${biome.nameEn}!"`,
+        hintFa: 'پیکان طلایی پای پیپ همیشه هدف بعدی ماموریت این مرحله را نشان می‌دهد.',
+        hintEn: 'Follow the golden compass arrow at Pip’s feet to your next mission target.',
       };
     case 'shrine_1':
       return {
         id: 'shrine_1',
-        stepIndex: 3,
-        totalSteps: 6,
-        speakerFa: spiritFa,
-        speakerEn: spiritEn,
-        textFa: `«نخستین نیایشگاه درخشید و نخستین حلقه از زنجیر خاردار در مرکز ${placeFa} ترک برداشت! ۳ نیایشگاه دیگر باقی مانده است.»`,
-        textEn: `"The first Shrine blazes with dawnlight! One thorny seal around the heart of ${placeEn} has cracked—3 Shrines remain."`,
-        hintFa: '۳ نیایشگاه دیگر را احیا کنید تا سپر غول مرکزی بشکند.',
-        hintEn: 'Restore 3 more Shrines to shatter the central Boss barrier.',
-      };
-    case 'shrine_2':
-      return {
-        id: 'shrine_2',
-        stepIndex: 4,
-        totalSteps: 6,
-        speakerFa: spiritFa,
-        speakerEn: spiritEn,
-        textFa: `«نیمی از نیایشگاه‌های ${placeFa} بیدار شدند! نسیم گرم دوباره میان شاخه‌ها می‌وزد و قدرت غول خاردار رو به افول است.»`,
-        textEn: `"Half the Shrines of ${placeEn} now sing in harmony! Warmth returns to the canopy and the Elder Bramble weakens."`,
-        hintFa: '۲ نیایشگاه دیگر تا شکستن کامل طلسم غول مرکزی باقی مانده است.',
-        hintEn: 'Only 2 Shrines left before the Elder Bramble is vulnerable!',
-      };
-    case 'shrine_3':
-      return {
-        id: 'shrine_3',
-        stepIndex: 4,
-        totalSteps: 6,
+        stepIndex: 2,
+        totalSteps: 4,
         speakerFa: 'پیپ (نگهبان جوانه)',
         speakerEn: 'Pip (Grove Guardian)',
-        textFa: `«سومین ستون نور هم بیدار شد! فقط یک نیایشگاه دیگر مانده تا سپر تاریک غول مرکزی برای همیشه فرو بریزد!»`,
-        textEn: `"Three pillars of sunlight shine! Just one final Shrine left to shatter the Elder Bramble's dark shield!"`,
-        hintFa: 'آخرین نیایشگاه را روی قطب‌نما پیدا و احیا کنید!',
-        hintEn: 'Follow the golden arrow to awaken the 4th and final Shrine!',
+        textFa: `«بخش اول ماموریت در ${biome.nameFa} با موفقیت انجام شد! انرژی طبیعت در حال بازگشت است.»`,
+        textEn: `"First milestone achieved in ${biome.nameEn}! Nature's harmony is returning!"`,
+        hintFa: 'به دنبال کردن پیکان راهنمای طلایی ادامه دهید.',
+        hintEn: 'Keep following the golden compass arrow to the next objective.',
+      };
+    case 'shrine_2':
+    case 'shrine_3':
+      return {
+        id: trigger,
+        stepIndex: 3,
+        totalSteps: 4,
+        speakerFa: 'روح نگهبان بیشه',
+        speakerEn: 'Grove Spirit',
+        textFa: `«بیش از نیمی از چالش ${biome.nameFa} کامل شد! فقط کمی دیگر تا پیروزی و گشوده شدن دروازه فصل بعد باقی مانده است!»`,
+        textEn: `"More than halfway through ${biome.nameEn}'s challenge! Victory is within reach!"`,
+        hintFa: 'چالش نهایی این مرحله را کامل کنید تا وارد اقلیم بعدی شوید.',
+        hintEn: 'Complete the remaining stage objective to unlock the next biome.',
       };
     case 'all_shrines_restored':
       return {
         id: 'all_shrines_restored',
-        stepIndex: 5,
-        totalSteps: 6,
-        speakerFa: spiritFa,
-        speakerEn: spiritEn,
-        textFa: `«هر ۴ نیایشگاه احیا شدند و پرتوهای خورشید سپر خاردار را شکافتند! اکنون به مرکز بیشه بیا و با عصای بلوطت مرا از آخرین خارهای تاریک رها کن تا دروازه فصل ${lvl + 1} گشوده شود!»`,
-        textEn: `"All 4 Shrines blaze! Their solar beams have shattered the thorny shield! Come to the center of the grove and strike the Elder Bramble to open Chapter ${lvl + 1}!"`,
-        hintFa: 'گام نهایی مرحله: به مرکز نقشه (۰،۰) بروید و غول مرکزی را با Space یا Q پاکسازی کنید!',
-        hintEn: 'Final Step: Go to the center of the map and strike the Boss with [Space] or [Q]!',
+        stepIndex: 3,
+        totalSteps: 4,
+        speakerFa: 'روح نگهبان بیشه',
+        speakerEn: 'Grove Spirit',
+        textFa: `«همه اهداف فرعی ${biome.nameFa} کامل شدند! اکنون گام آخر را بردار تا این فصل به پیروزی برسد!»`,
+        textEn: `"All stage milestones in ${biome.nameEn} are complete! Take the final step to claim victory!"`,
+        hintFa: 'پیکان طلایی را به نقطه پایانی دنبال کنید.',
+        hintEn: 'Follow the golden arrow to finish the stage!',
       };
     case 'boss_damaged':
       return {
         id: 'boss_damaged',
-        stepIndex: 5,
-        totalSteps: 6,
-        speakerFa: spiritFa,
-        speakerEn: spiritEn,
-        textFa: `«آفرین جوانه دلیر! با هر ضربه عصای تو، پوسته سیاه خارها فرو می‌ریزد و شکوفه‌های طلایی جوانه می‌زنند. ادامه بده!»`,
-        textEn: `"Well struck, brave Sproutling! Every blow of your Acorn Wand sheds the dark bark and awakens golden blossoms. Keep striking!"`,
-        hintFa: 'نوار جان غول مرکزی را به صفر برسانید تا وارد فصل بعد شوید.',
-        hintEn: 'Deplete the Boss HP bar to complete the chapter and advance!',
+        stepIndex: 3,
+        totalSteps: 4,
+        speakerFa: 'روح نگهبان بیشه',
+        speakerEn: 'Grove Spirit',
+        textFa: `«آفرین جوانه دلیر! ضربات درخشان تو تاریکی را به عقب می‌راند. ادامه بده!»`,
+        textEn: `"Well struck, brave Sproutling! Your radiant blows push back the gloom—keep going!"`,
+        hintFa: 'تا تکمیل کامل نوار پیشرفت مرحله ادامه دهید.',
+        hintEn: 'Keep going until the stage progress reaches 100%!',
       };
     case 'boss_cleansed':
+    default:
       return {
         id: 'boss_cleansed',
-        stepIndex: 6,
-        totalSteps: 6,
-        speakerFa: spiritFa,
-        speakerEn: spiritEn,
-        textFa: `«نفرین تاریکی شکست! ${placeFa} دوباره غرق در نور و آواز شد و دروازه طلایی به سوی فصل ${lvl + 1} پیش روی تو گشوده گشت!»`,
-        textEn: `"The curse is lifted! ${placeEn} blooms in golden harmony, and the shimmering pathway to Chapter ${lvl + 1} opens before you!"`,
+        stepIndex: 4,
+        totalSteps: 4,
+        speakerFa: 'روح نگهبان بیشه',
+        speakerEn: 'Grove Spirit',
+        textFa: `«ماموریت ${biome.nameFa} با پیروزی کامل به پایان رسید! دروازه درخشان به سوی فصل ${lvl + 1} و یک ماجراجویی کاملاً جدید گشوده شد!»`,
+        textEn: `"Mission accomplished in ${biome.nameEn}! The shimmering portal to Chapter ${lvl + 1} and a brand-new adventure is open!"`,
         hintFa: 'مرحله به‌پایان رسید! وارد فصل بعدی شوید.',
         hintEn: 'Stage Complete! Advance to the next chapter.',
       };

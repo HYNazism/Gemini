@@ -1558,3 +1558,514 @@ export function createBossModel(): {
 
   return { root, core, branches, leftArm, rightArm, shieldRing, eyeMat, shadow, applyBiomeTheme };
 }
+
+// ============================================================================
+// 8. STAGE-SPECIFIC 3D MISSION PROPS & DYNAMIC CENTERPIECES
+// ============================================================================
+
+/**
+ * Stage 1 (Rescue & Escort): Adorable Lost Baby Sproutling + Destructible Thorny Bramble Cage
+ */
+export function createLostSproutAndCageModel(): {
+  sproutRoot: THREE.Group;
+  cageRoot: THREE.Group;
+} {
+  const sproutRoot = new THREE.Group();
+
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: 0x80ed99,
+    roughness: 0.4,
+    metalness: 0.05,
+  });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 14), bodyMat);
+  body.scale.set(1.05, 0.92, 1.05);
+  body.position.y = 0.42;
+  body.castShadow = true;
+  sproutRoot.add(body);
+
+  // Big glossy eyes + rosy cheeks
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x081c15, roughness: 0.15 });
+  const specMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const cheekMat = new THREE.MeshStandardMaterial({
+    color: 0xff758f,
+    emissive: 0xff4d6d,
+    emissiveIntensity: 0.35,
+    roughness: 0.5,
+  });
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.065, 10, 8), eyeMat);
+    eye.position.set(side * 0.16, 0.48, 0.38);
+    const spec = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), specMat);
+    spec.position.set(side * 0.015, 0.02, 0.05);
+    eye.add(spec);
+    sproutRoot.add(eye);
+
+    const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), cheekMat);
+    cheek.scale.set(1.3, 0.7, 0.5);
+    cheek.position.set(side * 0.25, 0.4, 0.35);
+    sproutRoot.add(cheek);
+  }
+
+  // Twin glowing head-leaves + golden bud
+  const leafMat = new THREE.MeshStandardMaterial({
+    color: 0x38b000,
+    emissive: 0x2d6a4f,
+    emissiveIntensity: 0.25,
+    roughness: 0.35,
+  });
+  for (const side of [-1, 1]) {
+    const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.38, 8), leafMat);
+    leaf.position.set(side * 0.12, 0.88, 0);
+    leaf.rotation.z = -side * 0.55;
+    sproutRoot.add(leaf);
+  }
+  const bud = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.11, 0),
+    new THREE.MeshStandardMaterial({
+      color: 0xffd166,
+      emissive: 0xffbe0b,
+      emissiveIntensity: 0.9,
+      roughness: 0.2,
+    })
+  );
+  bud.position.y = 1.02;
+  sproutRoot.add(bud);
+
+  sproutRoot.add(createContactShadow(0.65));
+
+  // Destructible Thorny Bramble Cage
+  const cageRoot = new THREE.Group();
+  const cageMat = new THREE.MeshStandardMaterial({
+    color: 0x3c096c,
+    emissive: 0x5a189a,
+    emissiveIntensity: 0.25,
+    roughness: 0.75,
+    metalness: 0.2,
+  });
+  const baseRing = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.09, 8, 20), cageMat);
+  baseRing.rotation.x = Math.PI / 2;
+  baseRing.position.y = 0.08;
+  cageRoot.add(baseRing);
+
+  const topRing = new THREE.Mesh(new THREE.TorusGeometry(0.68, 0.08, 8, 20), cageMat);
+  topRing.rotation.x = Math.PI / 2;
+  topRing.position.y = 1.35;
+  cageRoot.add(topRing);
+
+  for (let i = 0; i < 6; i++) {
+    const ang = (i / 6) * Math.PI * 2;
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.075, 1.35, 7), cageMat);
+    bar.position.set(Math.cos(ang) * 0.76, 0.7, Math.sin(ang) * 0.76);
+    bar.rotation.z = Math.cos(ang) * 0.12;
+    bar.rotation.x = -Math.sin(ang) * 0.12;
+    bar.castShadow = true;
+    cageRoot.add(bar);
+  }
+
+  // Glowing lock crystal on top of the cage
+  const lockGem = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.24, 0),
+    new THREE.MeshStandardMaterial({
+      color: 0xf72585,
+      emissive: 0xf72585,
+      emissiveIntensity: 1.1,
+      roughness: 0.2,
+    })
+  );
+  lockGem.position.y = 1.55;
+  cageRoot.add(lockGem);
+
+  return { sproutRoot, cageRoot };
+}
+
+/**
+ * Stage 2 (Sakura Harmonic Bells): Ancient Bell Tower + Crystal Light Bridge to Center
+ */
+export function createHarmonicBellAndBridgeModel(
+  bellX: number,
+  bellZ: number
+): {
+  root: THREE.Group;
+  bellMesh: THREE.Mesh;
+  haloRing: THREE.Mesh;
+  bridgeMesh: THREE.Mesh;
+} {
+  const root = new THREE.Group();
+
+  const woodMat = new THREE.MeshStandardMaterial({
+    color: 0xb5179e,
+    roughness: 0.55,
+    metalness: 0.1,
+  });
+  const roofMat = new THREE.MeshStandardMaterial({
+    color: 0xff8fa3,
+    emissive: 0xff4d6d,
+    emissiveIntensity: 0.2,
+    roughness: 0.4,
+  });
+
+  // Two Torii pillars
+  for (const side of [-1, 1]) {
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 2.9, 10), woodMat);
+    pillar.position.set(side * 0.95, 1.45, 0);
+    pillar.castShadow = true;
+    root.add(pillar);
+  }
+
+  // Top crossbeams
+  const topBeam = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.24, 0.36), roofMat);
+  topBeam.position.y = 2.85;
+  topBeam.castShadow = true;
+  root.add(topBeam);
+
+  const lowerBeam = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.16, 0.26), woodMat);
+  lowerBeam.position.y = 2.4;
+  root.add(lowerBeam);
+
+  // Golden Hanging Bell
+  const bellMat = new THREE.MeshStandardMaterial({
+    color: 0xffd166,
+    emissive: 0xf4a261,
+    emissiveIntensity: 0.35,
+    roughness: 0.22,
+    metalness: 0.85,
+  });
+  const bellMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.52, 0.95, 16), bellMat);
+  bellMesh.position.y = 1.75;
+  bellMesh.castShadow = true;
+  root.add(bellMesh);
+
+  // Halo ring around base
+  const haloMat = new THREE.MeshStandardMaterial({
+    color: 0xff8fa3,
+    emissive: 0xff4d6d,
+    emissiveIntensity: 0.6,
+    transparent: true,
+    opacity: 0.7,
+  });
+  const haloRing = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.08, 8, 28), haloMat);
+  haloRing.rotation.x = Math.PI / 2;
+  haloRing.position.y = 0.1;
+  root.add(haloRing);
+
+  // Crystal Light Bridge connecting (bellX, bellZ) toward (0, 0)
+  const dist = Math.hypot(bellX, bellZ);
+  const bridgeLen = Math.max(4, dist - 3.5);
+  const bridgeGeo = new THREE.BoxGeometry(1.15, 0.12, bridgeLen);
+  const bridgeMat = new THREE.MeshStandardMaterial({
+    color: 0xffcad4,
+    emissive: 0xff4d6d,
+    emissiveIntensity: 0.15,
+    transparent: true,
+    opacity: 0.25,
+    roughness: 0.2,
+  });
+  const bridgeMesh = new THREE.Mesh(bridgeGeo, bridgeMat);
+  const midX = bellX * 0.5;
+  const midZ = bellZ * 0.5;
+  bridgeMesh.position.set(midX, 0.18, midZ);
+  bridgeMesh.rotation.y = Math.atan2(bellX, bellZ);
+
+  return { root, bellMesh, haloRing, bridgeMesh };
+}
+
+/**
+ * Stage 2 Centerpiece: Grand Sakura Bell Pavilion at (0, 0)
+ */
+export function createSakuraPavilionCenterpiece(): {
+  root: THREE.Group;
+  crystalCore: THREE.Mesh;
+} {
+  const root = new THREE.Group();
+
+  const baseMat = new THREE.MeshStandardMaterial({
+    color: 0xfde2e4,
+    roughness: 0.45,
+    metalness: 0.1,
+  });
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.6, 0.45, 24), baseMat);
+  base.position.y = 0.22;
+  base.receiveShadow = true;
+  root.add(base);
+
+  const roofMat = new THREE.MeshStandardMaterial({
+    color: 0xff758f,
+    emissive: 0xff4d6d,
+    emissiveIntensity: 0.28,
+    roughness: 0.35,
+  });
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(3.4, 1.6, 8), roofMat);
+  roof.position.y = 3.6;
+  roof.castShadow = true;
+  root.add(roof);
+
+  const pillarMat = new THREE.MeshStandardMaterial({ color: 0x6d597a, roughness: 0.5 });
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 2.8, 10), pillarMat);
+    p.position.set(Math.cos(a) * 2.4, 1.6, Math.sin(a) * 2.4);
+    p.castShadow = true;
+    root.add(p);
+  }
+
+  const crystalCore = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.75, 1),
+    new THREE.MeshStandardMaterial({
+      color: 0xffd166,
+      emissive: 0xff4d6d,
+      emissiveIntensity: 1.1,
+      roughness: 0.15,
+      metalness: 0.4,
+    })
+  );
+  crystalCore.position.y = 1.65;
+  root.add(crystalCore);
+
+  return { root, crystalCore };
+}
+
+/**
+ * Stage 3 Centerpiece: Colossal Ancient Amber Heart-Tree at (0, 0) + Golden Pulse Totems
+ */
+export function createHeartTreeCenterpiece(): {
+  root: THREE.Group;
+  heartCore: THREE.Mesh;
+  canopyGroup: THREE.Group;
+} {
+  const root = new THREE.Group();
+
+  const trunkMat = new THREE.MeshStandardMaterial({
+    color: 0x582f0e,
+    roughness: 0.8,
+  });
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.85, 3.8, 12), trunkMat);
+  trunk.position.y = 1.9;
+  trunk.castShadow = true;
+  trunk.receiveShadow = true;
+  root.add(trunk);
+
+  // Glowing Heart Core embedded in the trunk
+  const heartCore = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.85, 1),
+    new THREE.MeshStandardMaterial({
+      color: 0xffbe0b,
+      emissive: 0xf77f00,
+      emissiveIntensity: 1.25,
+      roughness: 0.2,
+    })
+  );
+  heartCore.position.set(0, 1.7, 0);
+  root.add(heartCore);
+
+  // Golden-Amber Autumn Canopy domes
+  const canopyGroup = new THREE.Group();
+  const leafColors = [0xe76f51, 0xf4a261, 0xff9f1c, 0xe9c46a];
+  const offsets = [
+    [0, 4.4, 0, 2.4],
+    [-1.4, 3.7, 0.9, 1.6],
+    [1.4, 3.8, -0.8, 1.6],
+    [0.8, 3.6, 1.3, 1.5],
+    [-1.1, 3.6, -1.2, 1.5],
+  ];
+  offsets.forEach(([ox, oy, oz, rad], idx) => {
+    const mat = new THREE.MeshStandardMaterial({
+      color: leafColors[idx % leafColors.length],
+      emissive: 0xbc6c25,
+      emissiveIntensity: 0.22,
+      roughness: 0.55,
+    });
+    const dome = new THREE.Mesh(new THREE.DodecahedronGeometry(rad, 1), mat);
+    dome.position.set(ox, oy, oz);
+    dome.scale.y = 0.78;
+    dome.castShadow = true;
+    canopyGroup.add(dome);
+  });
+  root.add(canopyGroup);
+
+  return { root, heartCore, canopyGroup };
+}
+
+export function createDefenseTotemModel(): {
+  root: THREE.Group;
+  orb: THREE.Mesh;
+  ring: THREE.Mesh;
+} {
+  const root = new THREE.Group();
+
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.45, 0.62, 1.35, 10),
+    new THREE.MeshStandardMaterial({ color: 0x7f4f24, roughness: 0.7 })
+  );
+  base.position.y = 0.68;
+  base.castShadow = true;
+  root.add(base);
+
+  const orb = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.38, 0),
+    new THREE.MeshStandardMaterial({
+      color: 0xffd166,
+      emissive: 0xff9f1c,
+      emissiveIntensity: 1.1,
+      roughness: 0.2,
+    })
+  );
+  orb.position.y = 1.7;
+  root.add(orb);
+
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(1.1, 0.06, 8, 24),
+    new THREE.MeshStandardMaterial({
+      color: 0xffbe0b,
+      emissive: 0xf77f00,
+      emissiveIntensity: 0.8,
+      transparent: true,
+      opacity: 0.75,
+    })
+  );
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.08;
+  root.add(ring);
+
+  return { root, orb, ring };
+}
+
+/**
+ * Stage 4 Centerpiece & Props: Aurora Prism Spire & Falling Starlight Meteors
+ */
+export function createAuroraSpireCenterpiece(): {
+  root: THREE.Group;
+  spireMesh: THREE.Mesh;
+  haloMesh: THREE.Mesh;
+} {
+  const root = new THREE.Group();
+
+  const pedestal = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.2, 2.7, 0.5, 16),
+    new THREE.MeshStandardMaterial({ color: 0x1d3557, roughness: 0.4, metalness: 0.3 })
+  );
+  pedestal.position.y = 0.25;
+  root.add(pedestal);
+
+  const spireMesh = new THREE.Mesh(
+    new THREE.OctahedronGeometry(1.35, 0),
+    new THREE.MeshStandardMaterial({
+      color: 0x80ffdb,
+      emissive: 0x00b4d8,
+      emissiveIntensity: 1.1,
+      roughness: 0.15,
+      metalness: 0.5,
+    })
+  );
+  spireMesh.scale.set(0.85, 2.1, 0.85);
+  spireMesh.position.y = 2.4;
+  spireMesh.castShadow = true;
+  root.add(spireMesh);
+
+  const haloMesh = new THREE.Mesh(
+    new THREE.TorusGeometry(2.1, 0.09, 10, 32),
+    new THREE.MeshStandardMaterial({
+      color: 0xe0aaff,
+      emissive: 0x72efdd,
+      emissiveIntensity: 0.9,
+    })
+  );
+  haloMesh.rotation.x = Math.PI / 2;
+  haloMesh.position.y = 1.8;
+  root.add(haloMesh);
+
+  return { root, spireMesh, haloMesh };
+}
+
+export function createStarlightMeteorModel(): {
+  root: THREE.Group;
+  core: THREE.Mesh;
+  timerRing: THREE.Mesh;
+  beam: THREE.Mesh;
+} {
+  const root = new THREE.Group();
+
+  const core = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.52, 0),
+    new THREE.MeshStandardMaterial({
+      color: 0xffe66d,
+      emissive: 0x00f5d4,
+      emissiveIntensity: 1.35,
+      roughness: 0.15,
+      metalness: 0.3,
+    })
+  );
+  core.position.y = 0.75;
+  core.castShadow = true;
+  root.add(core);
+
+  const timerRing = new THREE.Mesh(
+    new THREE.TorusGeometry(1.15, 0.07, 8, 28),
+    new THREE.MeshStandardMaterial({
+      color: 0x80ffdb,
+      emissive: 0x48cae4,
+      emissiveIntensity: 0.9,
+      transparent: true,
+      opacity: 0.8,
+    })
+  );
+  timerRing.rotation.x = Math.PI / 2;
+  timerRing.position.y = 0.08;
+  root.add(timerRing);
+
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.15, 0.45, 6.5, 10, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: 0x80ffdb,
+      transparent: true,
+      opacity: 0.22,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    })
+  );
+  beam.position.y = 3.25;
+  root.add(beam);
+
+  return { root, core, timerRing, beam };
+}
+
+/**
+ * Shared Wind-Stream / Aurora Speed Boost Pad
+ */
+export function createBoostPadModel(isAurora: boolean): {
+  root: THREE.Group;
+  ring: THREE.Mesh;
+} {
+  const root = new THREE.Group();
+  const primaryHex = isAurora ? 0x80ffdb : 0xff8fa3;
+  const emissiveHex = isAurora ? 0x00b4d8 : 0xff4d6d;
+
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(1.45, 0.1, 8, 24),
+    new THREE.MeshStandardMaterial({
+      color: primaryHex,
+      emissive: emissiveHex,
+      emissiveIntensity: 1.0,
+      transparent: true,
+      opacity: 0.85,
+    })
+  );
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.12;
+  root.add(ring);
+
+  const innerDisc = new THREE.Mesh(
+    new THREE.CircleGeometry(1.3, 20),
+    new THREE.MeshBasicMaterial({
+      color: primaryHex,
+      transparent: true,
+      opacity: 0.28,
+      side: THREE.DoubleSide,
+    })
+  );
+  innerDisc.rotation.x = -Math.PI / 2;
+  innerDisc.position.y = 0.06;
+  root.add(innerDisc);
+
+  return { root, ring };
+}
+

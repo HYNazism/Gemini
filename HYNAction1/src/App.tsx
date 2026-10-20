@@ -21,6 +21,7 @@ import {
   DEFAULT_CUSTOMIZATION,
   DEFAULT_HOME_BASE,
   generateChapterInfo,
+  createInitialMissionState,
   computeStageObjectiveGuide,
   getInGameStoryBeat,
   getTodayDateKey,
@@ -52,6 +53,7 @@ export default function App() {
   const [hudData, setHudData] = useState<HUDData>(() => {
     const todayKey = getTodayDateKey();
     const ch1 = generateChapterInfo(1);
+    const initialMission = createInitialMissionState(1);
     const initialBeat = getInGameStoryBeat(1, 'chapter_start');
     return {
       gameState: 'title',
@@ -91,7 +93,9 @@ export default function App() {
         bossMaxHp: ch1.bossMaxHp,
         bossCleansed: false,
         chapterNumber: 1,
+        missionState: initialMission,
       }),
+      missionState: initialMission,
       currentStoryBeat: initialBeat,
       storyHistory: [initialBeat],
       performanceQuality: 'balanced',

@@ -132,25 +132,39 @@ export function getLocalizedChapterInfo(chapterNumber: number, lang: Language): 
   if (lang === 'en') return base;
 
   const lvl = base.chapterNumber;
-  const spirit = FA_SPIRITS[(lvl - 1) % FA_SPIRITS.length];
-  const weatherFa = WEATHER_SHORT_LABELS.fa[base.featuredWeather];
-
-  const storyParagraph =
-    lvl === 1
-      ? `«پیپ» در «${base.biomeNameFa}» چشم باز می‌کند. موجودات بازیگوش جنگل نور ۴ نیایشگاه باستانی را کم‌سو کرده و «${spirit}» را در خارهای خواب‌آلود پیچیده‌اند. تنها با اهدای ${base.seedsPerShrine} بذر طلایی به هر نیایشگاه، گرما و روشنایی را به بیشه بازگردانید!`
-      : `دروازه نورانی به سوی فصل ${lvl} یعنی «${base.biomeNameFa}» گشوده شد! زیست‌بوم و موجودات جدید این سرزمین را کشف کنید و با اهدای ${base.seedsPerShrine} بذر به هر یک از ۴ نیایشگاه زیر آسمان ${weatherFa}، «${spirit}» را آزاد سازید!`;
+  const storyByModeFa: Record<string, string> = {
+    rescue_escort: `در «${base.biomeNameFa}»، نیازی به روشن کردن نیایشگاه‌ها نیست! ۳ جوانه کوچک در قفس‌های خاردار اسیر شده‌اند. قفس‌هایشان را با عصای بلوط بشکنید و کاروان پران و بامزه آن‌ها را به حیاط کلبه امن هدایت کنید!`,
+    harmonic_bells: `در «${base.biomeNameFa}»، از دالان‌های باد صورتی برای سرعت گرفتن عبور کنید و ۴ زنگوله باستانی دره را به صدا درآورید تا پل‌های بلورین روشن شده و دروازه معبد مرکزی ساکورا باز شود!`,
+    heart_tree_defense: `در مرکز «${base.biomeNameFa}»، درخت کهنسال قلب کهربایی در برابر ۳ موج کوتاه از مهاجمان ایستاده است! با ضربه زدن به توتم‌های موج طلایی، درخت را شفا دهید و مهاجمان را دفع کنید!`,
+    meteor_rush: `آسمان «${base.biomeNameFa}» غرق در شهاب‌باران است! روی سکوهای شتاب‌دهنده یخی بپرید و ۶ شهاب‌سنگ ستاره‌ای را پیش از آنکه نورشان در برف خاموش شود شکار کنید!`,
+    boss_duel: `وارد میدان کیهانی «${base.biomeNameFa}» شده‌اید! ستون‌های تشدید اخترتاب را (بدون نیاز به بذر!) فعال کنید تا پادشاه خارهای باستانی گیج شده و با ضربات۳برابری پاکسازی شود!`,
+  };
 
   return {
     ...base,
     title: `فصل ${lvl}: ${base.biomeNameFa}`,
-    subtitle: `برکت ${spirit}`,
-    storyParagraph,
+    subtitle: `${base.missionBadgeFa}`,
+    storyParagraph: storyByModeFa[base.missionMode] || storyByModeFa.rescue_escort,
   };
 }
 
 export function localizeShrinePrompt(rawPrompt: string, lang: Language): string {
   if (lang === 'en' || !rawPrompt) return rawPrompt;
-  // Convert "Press E or Tap RESTORE to deposit Sun-Seed (1/3)" or "Need 2 more Sun-Seeds to restore Shrine!"
+  if (rawPrompt.includes('Break Bramble Cage')) {
+    return 'کلید E یا دکمه «ضربه/احیا» را بزنید تا قفس شکسته و جوانه آزاد شود!';
+  }
+  if (rawPrompt.includes('Ring Ancient Chime Bell')) {
+    return 'کلید E یا دکمه «ضربه/احیا» را بزنید تا زنگوله باستانی طنین اندازد!';
+  }
+  if (rawPrompt.includes('Enter Central Sakura Pavilion')) {
+    return 'وارد معبد مرکزی ساکورا شدید! دکمه E یا ضربه را برای تکمیل مرحله بزنید!';
+  }
+  if (rawPrompt.includes('Trigger Healing Pulse Totem')) {
+    return 'کلید E یا ضربه را بزنید تا موج شفابخش توتم طلایی فعال شود!';
+  }
+  if (rawPrompt.includes('Activate Starlight Pillar')) {
+    return 'کلید E یا ضربه را بزنید تا ستون اخترتاب غول را گیج کند (بدون نیاز به بذر)!';
+  }
   const depositMatch = rawPrompt.match(/\((\d+)\/(\d+)\)/);
   if (rawPrompt.includes('Press E') && depositMatch) {
     return `کلید E یا دکمه «احیا» را بزنید تا بذر خورشید اهدا شود (${depositMatch[1]}/${depositMatch[2]})`;
@@ -159,7 +173,7 @@ export function localizeShrinePrompt(rawPrompt: string, lang: Language): string 
   if (needMatch) {
     return `برای بیدار کردن این نیایشگاه به ${needMatch[1]} بذر خورشید دیگر نیاز دارید!`;
   }
-  return 'کلید E یا دکمه «احیا» را برای اهدای بذر خورشید فشار دهید';
+  return 'کلید E یا دکمه «احیا» را برای تعامل فشار دهید';
 }
 
 export const BODY_TYPE_LABELS: Record<Language, Record<BodyType, string>> = {

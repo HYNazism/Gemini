@@ -88,6 +88,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     bossMaxHp,
     bossCleansed,
     stageObjective,
+    missionState,
     currentStoryBeat,
     storyHistory,
     dailyQuests,
@@ -131,8 +132,22 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     unclaimedQuest || dailyQuests.find((q) => !q.completed) || dailyQuests[0];
   const featuredQuestLoc = featuredQuest ? localizeDailyQuest(featuredQuest, lang) : null;
   const localizedChapter = getLocalizedChapterInfo(chapterInfo.chapterNumber, lang);
-  const bossHpPercent = bossMaxHp > 0 ? Math.max(0, Math.min(100, (bossHp / bossMaxHp) * 100)) : 0;
   const isCompact = hudProfile.tier === 'compact-mobile';
+
+  const modeBadgeLabel = (() => {
+    switch (missionState.mode) {
+      case 'rescue_escort':
+        return isFa ? 'ماموریت: نجات و اسکورت' : 'Mission: Critter Rescue';
+      case 'harmonic_bells':
+        return isFa ? 'ماموریت: پازل زنگوله و پل نور' : 'Mission: Bell & Bridge Puzzle';
+      case 'heart_tree_defense':
+        return isFa ? 'ماموریت: دفاع از درخت قلب' : 'Mission: Heart-Tree Defense';
+      case 'meteor_rush':
+        return isFa ? 'ماموریت: شهاب‌باران زمان‌دار' : 'Mission: Falling Star Rush';
+      case 'boss_duel':
+        return isFa ? 'ماموریت: نبرد غول امپراتور' : 'Mission: Emperor Boss Duel';
+    }
+  })();
 
   return (
     <div
@@ -143,7 +158,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     >
       {/* Top Bar: Corner Clusters + Center Stage Progression Tracker */}
       <div className="flex flex-wrap items-start justify-between w-full gap-1.5 sm:gap-2">
-        {/* Top-Left Cluster: Vitality Leaf Pips, Seeds, Shrines, Chapter & Compact Daily Quests Tracker */}
+        {/* Top-Left Cluster: Vitality Leaf Pips, Stage-Specific Mission Metrics & Compact Daily Quests Tracker */}
         <div className="flex flex-col gap-1">
           {/* Health Leaves Socket + Chapter Guide Trigger */}
           <div className="flex items-center gap-1 bg-[#1b4332]/90 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-2xl border border-[#709775]/60 shadow-md">
@@ -173,11 +188,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               className="ml-1.5 px-2 py-0.5 rounded-lg bg-[#ffd166]/20 hover:bg-[#ffd166]/35 border border-[#ffd166]/50 text-[10px] font-black text-[#ffd166] flex items-center gap-1 pointer-events-auto cursor-pointer"
             >
               <BookOpen className="w-3 h-3" />
-              <span>{isFa ? `فصل ${chapterInfo.chapterNumber} (راهنما)` : `Ch.${chapterInfo.chapterNumber} Guide`}</span>
+              <span>{isFa ? `فصل ${chapterInfo.chapterNumber} (تغییر مرحله)` : `Stage ${chapterInfo.chapterNumber} Modes`}</span>
             </button>
           </div>
 
-          {/* Seeds, Shrines & Boss Status Cluster */}
+          {/* Dynamic Stage-Specific Mission Counter Cluster */}
           <div className="flex items-center gap-2.5 bg-[#1b4332]/90 px-3 py-1.5 rounded-2xl border border-[#709775]/60 shadow-md">
             <div className="flex items-center gap-1">
               <Sun className="w-4 h-4 text-[#ffd166]" />
@@ -191,30 +206,120 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
             <div className="w-[1px] h-3.5 bg-[#709775]/40" />
 
-            <div className="flex items-center gap-1">
-              <Sparkles className="w-4 h-4 text-[#06d6a0]" />
-              <span className="text-sm font-black text-[#06d6a0] tabular-nums">
-                {restoredShrines}/{totalShrines}
-              </span>
-              <span className="text-[10px] font-bold text-[#d8f3dc]/85">
-                {isFa ? 'نیایشگاه' : 'Shrines'}
-              </span>
-            </div>
+            {missionState.mode === 'rescue_escort' && (
+              <>
+                <div className="flex items-center gap-1">
+                  <Sparkles className="w-4 h-4 text-[#06d6a0]" />
+                  <span className="text-sm font-black text-[#06d6a0] tabular-nums">
+                    {missionState.rescuedCount}/{missionState.totalToRescue}
+                  </span>
+                  <span className="text-[10px] font-bold text-[#d8f3dc]/85">
+                    {isFa ? 'جوانه امن' : 'Rescued'}
+                  </span>
+                </div>
+                <div className="w-[1px] h-3.5 bg-[#709775]/40" />
+                <span className="text-[10px] font-bold text-[#ffd166]">
+                  {isFa
+                    ? `همراه شما: ${missionState.lostSprouts.filter((s) => s.state === 'following').length}`
+                    : `Following: ${missionState.lostSprouts.filter((s) => s.state === 'following').length}`}
+                </span>
+              </>
+            )}
 
-            <div className="w-[1px] h-3.5 bg-[#709775]/40" />
+            {missionState.mode === 'harmonic_bells' && (
+              <>
+                <div className="flex items-center gap-1">
+                  <Sparkles className="w-4 h-4 text-[#ffb3c6]" />
+                  <span className="text-sm font-black text-[#ffb3c6] tabular-nums">
+                    {missionState.bellsRungCount}/3
+                  </span>
+                  <span className="text-[10px] font-bold text-[#d8f3dc]/85">
+                    {isFa ? 'زنگوله' : 'Bells'}
+                  </span>
+                </div>
+                <div className="w-[1px] h-3.5 bg-[#709775]/40" />
+                <span className="text-[10px] font-bold text-[#ffd166]">
+                  {missionState.bridgesUnlocked
+                    ? isFa
+                      ? 'پل نوری: باز شد ✓'
+                      : 'Light Bridge: Open ✓'
+                    : isFa
+                    ? 'پل نوری: قفل'
+                    : 'Bridge: Locked'}
+                </span>
+              </>
+            )}
 
-            <div className="flex items-center gap-1">
-              {stageObjective.bossShieldActive ? (
-                <ShieldAlert className="w-3.5 h-3.5 text-[#c77dff]" />
-              ) : (
-                <ShieldCheck className="w-3.5 h-3.5 text-[#ffd166]" />
-              )}
-              <span className="text-[10px] font-bold text-[#e9f5db] tabular-nums">
-                {isFa
-                  ? `غول: ${Math.ceil(bossHp)}/${bossMaxHp}`
-                  : `Boss: ${Math.ceil(bossHp)}/${bossMaxHp}`}
-              </span>
-            </div>
+            {missionState.mode === 'heart_tree_defense' && (
+              <>
+                <div className="flex items-center gap-1">
+                  <ShieldCheck className="w-4 h-4 text-[#ff9f1c]" />
+                  <span className="text-sm font-black text-[#ff9f1c] tabular-nums">
+                    {Math.ceil(missionState.heartTreeHp)}%
+                  </span>
+                  <span className="text-[10px] font-bold text-[#d8f3dc]/85">
+                    {isFa ? 'درخت قلب' : 'Tree HP'}
+                  </span>
+                </div>
+                <div className="w-[1px] h-3.5 bg-[#709775]/40" />
+                <span className="text-[10px] font-bold text-[#06d6a0] tabular-nums">
+                  {isFa
+                    ? `مهاجمان: ${missionState.waveEnemiesDefeated}/${missionState.waveEnemiesTotal}`
+                    : `Wave: ${missionState.waveEnemiesDefeated}/${missionState.waveEnemiesTotal}`}
+                </span>
+              </>
+            )}
+
+            {missionState.mode === 'meteor_rush' && (
+              <>
+                <div className="flex items-center gap-1">
+                  <Sparkles className="w-4 h-4 text-[#48cae4]" />
+                  <span className="text-sm font-black text-[#48cae4] tabular-nums">
+                    {missionState.meteorsCollected}/{missionState.meteorsTarget}
+                  </span>
+                  <span className="text-[10px] font-bold text-[#d8f3dc]/85">
+                    {isFa ? 'شهاب‌سنگ' : 'Meteors'}
+                  </span>
+                </div>
+                <div className="w-[1px] h-3.5 bg-[#709775]/40" />
+                <span className="text-[10px] font-bold text-[#ffd166] tabular-nums">
+                  {missionState.speedBoostTimer > 0
+                    ? isFa
+                      ? `شتاب کریستالی: ${missionState.speedBoostTimer.toFixed(1)}s`
+                      : `Boost: ${missionState.speedBoostTimer.toFixed(1)}s`
+                    : isFa
+                    ? 'سکوی پرش فعال'
+                    : 'Boost Pads Ready'}
+                </span>
+              </>
+            )}
+
+            {missionState.mode === 'boss_duel' && (
+              <>
+                <div className="flex items-center gap-1">
+                  <Sparkles className="w-4 h-4 text-[#06d6a0]" />
+                  <span className="text-sm font-black text-[#06d6a0] tabular-nums">
+                    {restoredShrines}/{totalShrines}
+                  </span>
+                  <span className="text-[10px] font-bold text-[#d8f3dc]/85">
+                    {isFa ? 'ستون رزونانس' : 'Pillars'}
+                  </span>
+                </div>
+                <div className="w-[1px] h-3.5 bg-[#709775]/40" />
+                <div className="flex items-center gap-1">
+                  {stageObjective.bossShieldActive ? (
+                    <ShieldAlert className="w-3.5 h-3.5 text-[#c77dff]" />
+                  ) : (
+                    <ShieldCheck className="w-3.5 h-3.5 text-[#ffd166]" />
+                  )}
+                  <span className="text-[10px] font-bold text-[#e9f5db] tabular-nums">
+                    {isFa
+                      ? `غول: ${Math.ceil(bossHp)}/${bossMaxHp}`
+                      : `Boss: ${Math.ceil(bossHp)}/${bossMaxHp}`}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Compact Daily Quests Live Tracker Button */}
@@ -269,6 +374,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               </span>
             </div>
             <div className="flex items-center gap-1.5">
+              <span className="px-1.5 py-0.5 rounded bg-[#1b4332] border border-[#52b788]/40 text-[9px] font-black text-[#80ffdb]">
+                {modeBadgeLabel}
+              </span>
               <span className="text-[10px] font-black text-[#06d6a0] tabular-nums">
                 {stageObjective.progressPercent}%
               </span>
@@ -277,20 +385,16 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 onClick={() => setShowStageGuideModal(true)}
                 className="px-2 py-0.5 rounded-md bg-[#2d6a4f] hover:bg-[#40916c] text-[10px] font-bold text-[#f4fbf1] cursor-pointer"
               >
-                {isFa ? 'چطور برم مرحله بعد؟' : 'Stage Info'}
+                {isFa ? 'راهنمای مرحله' : 'Stage Info'}
               </button>
             </div>
           </div>
 
-          {/* Stage Progress + Boss HP Bar */}
+          {/* Stage Progress Bar */}
           <div className="w-full h-1.5 bg-[#1b4332] rounded-full overflow-hidden flex">
             <div
-              className="h-full bg-[#ffd166] transition-all duration-300"
-              style={{ width: `${Math.min(65, (restoredShrines / Math.max(1, totalShrines)) * 65)}%` }}
-            />
-            <div
-              className="h-full bg-[#06d6a0] transition-all duration-300"
-              style={{ width: `${Math.max(0, ((100 - bossHpPercent) / 100) * 35)}%` }}
+              className="h-full bg-gradient-to-r from-[#ffd166] to-[#06d6a0] transition-all duration-300"
+              style={{ width: `${stageObjective.progressPercent}%` }}
             />
           </div>
 
@@ -500,44 +604,29 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               </button>
             </div>
 
-            {/* How to go to next stage */}
+            {/* How to go to next stage (Dynamic per Stage Mission Archetype) */}
             <div className="bg-[#0f281e] p-3.5 rounded-2xl border border-[#52b788]/50 flex flex-col gap-2">
               <span className="text-xs font-black text-[#ffd166]">
                 {isFa
-                  ? 'چگونه این مرحله را تمام کنیم و به فصل بعد برویم؟'
-                  : 'How to Complete This Stage & Advance to Next Chapter:'}
+                  ? `هدف اختصاصی این مرحله (${modeBadgeLabel}):`
+                  : `Unique Stage Mission (${modeBadgeLabel}):`}
               </span>
 
               <div className="flex items-center justify-between text-xs bg-[#1b4332] p-2.5 rounded-xl border border-[#2d6a4f]">
-                <span>
-                  {isFa
-                    ? `۱. جمع‌آوری بذر خورشید و احیای ۴ نیایشگاه باستانی (کلید E)`
-                    : `1. Gather Sun-Seeds & Restore 4 Ancient Shrines [E]`}
-                </span>
+                <span>{isFa ? stageObjective.headlineFa : stageObjective.headlineEn}</span>
                 <span className="font-black text-[#06d6a0] tabular-nums">
-                  {restoredShrines} / {totalShrines}
+                  {stageObjective.progressPercent}%
                 </span>
               </div>
 
-              <div className="flex items-center justify-between text-xs bg-[#1b4332] p-2.5 rounded-xl border border-[#2d6a4f]">
-                <span>
-                  {isFa
-                    ? `۲. شکستن سپر و پاکسازی غول خاردار مرکزی در وسط نقشه (Space / Q)`
-                    : `2. Cleanse the Central Elder Bramble Boss at Map Center [Space / Q]`}
-                </span>
-                <span className="font-black text-[#ffd166] tabular-nums">
-                  {bossCleansed
-                    ? isFa
-                      ? 'پاکسازی شد ✓'
-                      : 'Cleansed ✓'
-                    : `${Math.ceil(bossHp)} / ${bossMaxHp} HP`}
-                </span>
+              <div className="text-xs bg-[#1b4332] p-2.5 rounded-xl border border-[#2d6a4f] text-[#f4fbf1] leading-relaxed">
+                {isFa ? stageObjective.sublineFa : stageObjective.sublineEn}
               </div>
 
               <p className="text-[11px] text-[#95d5b2] leading-relaxed">
                 {isFa
-                  ? 'نکته: پیکان طلایی روی زمین (زیر پای پیپ) همیشه جهت دقیق نزدیک‌ترین نیایشگاه خاموش یا غول مرکزی را به شما نشان می‌دهد!'
-                  : 'Tip: The golden compass arrow at Pip’s feet always points directly toward the next unrestored Shrine or the Central Boss!'}
+                  ? 'نکته: پیکان طلایی روی زمین (زیر پای پیپ) همیشه جهت دقیق هدف بعدی این ماموریت را به شما نشان می‌دهد!'
+                  : 'Tip: The golden compass arrow at Pip’s feet always points directly toward your next mission target!'}
               </p>
             </div>
 
@@ -561,16 +650,42 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               ))}
             </div>
 
-            {/* Quick Stage Biome Explorer (5 Distinct Biomes) */}
+            {/* Quick Stage Biome & Mission Mode Explorer (5 Distinct Gameplay Styles) */}
             {onJumpToChapter && (
               <div className="bg-[#0f281e] p-3.5 rounded-2xl border border-[#ffd166]/40 flex flex-col gap-2">
                 <span className="text-xs font-black text-[#ffd166]">
                   {isFa
-                    ? 'انتخاب مستقیم مراحل و زیست‌بوم‌های متنوع:'
-                    : 'Explore Distinct Stage Biomes Directly:'}
+                    ? 'انتخاب مستقیم مراحل (۵ سبک گیم‌پلی و نقشه سه‌بعدی کاملاً متفاوت):'
+                    : 'Switch Stage Directly (5 Distinct Gameplay Modes & 3D Maps):'}
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                  {[1, 2, 3, 4, 5].map((chNum) => {
+                  {[
+                    {
+                      chNum: 1,
+                      modeFa: 'نجات و هدایت جوانه‌ها به کلبه',
+                      modeEn: 'Critter Rescue & Escort',
+                    },
+                    {
+                      chNum: 2,
+                      modeFa: 'پازل زنگوله‌ها و پل‌های نوری',
+                      modeEn: 'Harmonic Bells & Light Bridges',
+                    },
+                    {
+                      chNum: 3,
+                      modeFa: 'دفاع از درخت قلب کهربایی',
+                      modeEn: 'Heart-Tree Wave Defense',
+                    },
+                    {
+                      chNum: 4,
+                      modeFa: 'مسابقه شهاب‌باران زمان‌دار',
+                      modeEn: 'Falling Starlight Meteor Rush',
+                    },
+                    {
+                      chNum: 5,
+                      modeFa: 'نبرد غول امپراتور در میدان رزونانس',
+                      modeEn: 'Celestial Boss Arena Duel',
+                    },
+                  ].map(({ chNum, modeFa, modeEn }) => {
                     const b = getStageBiomeTheme(chNum);
                     const isCurrent = chapterInfo.chapterNumber === chNum;
                     return (
@@ -581,16 +696,25 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                           setShowStageGuideModal(false);
                           onJumpToChapter(chNum);
                         }}
-                        className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between border transition-all cursor-pointer ${
+                        className={`px-3 py-2 rounded-xl text-xs font-bold flex flex-col items-start gap-0.5 border transition-all cursor-pointer ${
                           isCurrent
                             ? 'bg-[#ffd166] text-[#081c15] border-white shadow-md'
                             : 'bg-[#1b4332] hover:bg-[#2d6a4f] text-[#e9f5db] border-[#52b788]/40'
                         }`}
                       >
-                        <span>
-                          {isFa ? `فصل ${chNum}: ${b.nameFa}` : `Stage ${chNum}: ${b.nameEn}`}
+                        <div className="flex items-center justify-between w-full">
+                          <span>
+                            {isFa ? `مرحله ${chNum}: ${b.nameFa}` : `Stage ${chNum}: ${b.nameEn}`}
+                          </span>
+                          {isCurrent && <span className="text-[10px] font-black">★</span>}
+                        </div>
+                        <span
+                          className={`text-[10px] font-medium ${
+                            isCurrent ? 'text-[#1b4332]' : 'text-[#80ffdb]'
+                          }`}
+                        >
+                          {isFa ? modeFa : modeEn}
                         </span>
-                        {isCurrent && <span className="text-[10px] font-black">★</span>}
                       </button>
                     );
                   })}

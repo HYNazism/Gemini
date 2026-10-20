@@ -18,6 +18,14 @@ import {
   createShrineModel,
   createBossModel,
   createSunSeedModel,
+  createLostSproutAndCageModel,
+  createHarmonicBellAndBridgeModel,
+  createSakuraPavilionCenterpiece,
+  createHeartTreeCenterpiece,
+  createDefenseTotemModel,
+  createAuroraSpireCenterpiece,
+  createStarlightMeteorModel,
+  createBoostPadModel,
   type HeroRig,
   type HomeBaseRig,
 } from './models';
@@ -49,6 +57,7 @@ import {
   applyRewardedRevive,
   generateChapterInfo,
   getStageBiomeTheme,
+  createInitialMissionState,
   computeStageObjectiveGuide,
   getInGameStoryBeat,
   getTodayDateKey,
@@ -76,6 +85,7 @@ import {
   type PerformanceQuality,
   type DailyQuest,
   type DailyQuestType,
+  type StageMissionState,
 } from './rules';
 import { sound } from './audio';
 
@@ -107,6 +117,7 @@ export interface HUDData {
   bossMaxHp: number;
   bossCleansed: boolean;
   stageObjective: StageObjectiveGuide;
+  missionState: StageMissionState;
   currentStoryBeat: InGameStoryBeat | null;
   storyHistory: InGameStoryBeat[];
   performanceQuality: PerformanceQuality;
@@ -213,6 +224,29 @@ export class GameEngine {
   // Shrines
   private shrines: Shrine[] = [];
   private shrineRigs: ReturnType<typeof createShrineModel>[] = [];
+
+  // Dynamic Stage Mission State & 3D Props
+  private missionState: StageMissionState = createInitialMissionState(1);
+  private stagePropsGroup!: THREE.Group;
+  private sproutRigs: { sproutRoot: THREE.Group; cageRoot: THREE.Group }[] = [];
+  private bellRigs: {
+    root: THREE.Group;
+    bellMesh: THREE.Mesh;
+    haloRing: THREE.Mesh;
+    bridgeMesh: THREE.Mesh;
+  }[] = [];
+  private totemRigs: { root: THREE.Group; orb: THREE.Mesh; ring: THREE.Mesh }[] = [];
+  private meteorRigs: {
+    root: THREE.Group;
+    core: THREE.Mesh;
+    timerRing: THREE.Mesh;
+    beam: THREE.Mesh;
+  }[] = [];
+  private boostPadRigs: { root: THREE.Group; ring: THREE.Mesh }[] = [];
+  private centerpieceRig: {
+    root: THREE.Group;
+    rotatingPart?: THREE.Object3D;
+  } | null = null;
 
   // Pickups
   private pickups: {
@@ -563,9 +597,13 @@ export class GameEngine {
     this.bossRig.root.position.set(0, bossY, 0);
     this.scene.add(this.bossRig.root);
 
+    // Stage-Specific Dynamic 3D Props Group
+    this.stagePropsGroup = new THREE.Group();
+    this.scene.add(this.stagePropsGroup);
+
     this.applyPerformanceProfile();
 
-    // 4 Ancient Sun Shrines
+    // 4 Ancient Sun Shrines / Astral Pillars
     const initialChapter = generateChapterInfo(this.currentChapterNumber);
     const initialBiome = getStageBiomeTheme(this.currentChapterNumber);
     this.environmentRig.applyBiomeTheme(initialBiome);
@@ -598,7 +636,6 @@ export class GameEngine {
       const y = getGroundHeight(s.x, s.z);
       rig.root.position.set(s.x, y, s.z);
 
-      // Orient the Solar Tether Beam from this Shrine toward Central Boss (0, 2.0, 0)
       const distToCenter = Math.hypot(s.x, s.z);
       rig.beamMesh.scale.set(1, 1, distToCenter);
       rig.beamMesh.rotation.y = Math.atan2(-s.x, -s.z);
@@ -615,8 +652,118 @@ export class GameEngine {
       this.spawnPickup(Math.cos(ang) * rad, Math.sin(ang) * rad);
     }
 
+    this.rebuildStageMissionLayout();
     this.spawnEnemies(initialChapter.enemyCount);
     this.renderer.compile(this.scene, this.camera);
+  }
+
+  /**
+   * Completely transforms the 3D centerpiece, obstacles, and interactive mission props
+   * for each stage's unique mission mode (`rescue_escort`, `harmonic_bells`, `heart_tree_defense`, `meteor_rush`, `boss_duel`).
+   */
+  private rebuildStageMissionLayout(): void {
+    this.missionState = createInitialMissionState(this.currentChapterNumber);
+
+    if (this.stagePropsGroup) {
+      while (this.stagePropsGroup.children.length > 0) {
+        this.stagePropsGroup.remove(this.stagePropsGroup.children[0]);
+      }
+    }
+    this.sproutRigs = [];
+    this.bellRigs = [];
+    this.totemRigs = [];
+    this.meteorRigs = [];
+    this.boostPadRigs = [];
+    this.centerpieceRig = null;
+
+    const mode = this.missionState.mode;
+    const isBossStage = mode === 'boss_duel';
+
+    // Show Boss & Shrines ONLY in Stage 5 (boss_duel) so Stages 1-4 have completely fresh centerpieces & layouts!
+    if (this.bossRig) {
+      this.bossRig.root.visible = isBossStage;
+      this.bossRig.shieldRing.visible = isBossStage;
+    }
+    this.shrineRigs.forEach((rig, idx) => {
+      rig.root.visible = isBossStage;
+      rig.beamMesh.visible = false;
+      if (this.shrines[idx]) {
+        this.shrines[idx].isRestored = !isBossStage;
+        this.shrines[idx].currentSeeds = 0;
+        this.shrines[idx].requiredSeeds = isBossStage ? 1 : 1;
+      }
+    });
+
+    // Build Boost Pads (Sakura Wind Streams in Stage 2, Aurora Ice Pads in Stage 4)
+    for (const pad of this.missionState.boostPads) {
+      const padRig = createBoostPadModel(mode === 'meteor_rush');
+      const py = getGroundHeight(pad.x, pad.z);
+      padRig.root.position.set(pad.x, py, pad.z);
+      this.stagePropsGroup.add(padRig.root);
+      this.boostPadRigs.push(padRig);
+    }
+
+    if (mode === 'rescue_escort') {
+      // Stage 1: 3 Thorny Bramble Cages + Lost Baby Sproutlings + Safe Sanctuary Beacon Ring at (0, 0) & (0, 13.5)
+      for (const sp of this.missionState.lostSprouts) {
+        const rig = createLostSproutAndCageModel();
+        const y = getGroundHeight(sp.x, sp.z);
+        rig.sproutRoot.position.set(sp.x, y, sp.z);
+        rig.cageRoot.position.set(sp.cageX, y, sp.cageZ);
+        this.stagePropsGroup.add(rig.sproutRoot);
+        this.stagePropsGroup.add(rig.cageRoot);
+        this.sproutRigs.push(rig);
+      }
+      // Cozy Floral Sanctuary Gazebo at (0, 0)
+      const pav = createSakuraPavilionCenterpiece();
+      pav.root.position.set(0, getGroundHeight(0, 0), 0);
+      this.stagePropsGroup.add(pav.root);
+      this.centerpieceRig = { root: pav.root, rotatingPart: pav.crystalCore };
+    } else if (mode === 'harmonic_bells') {
+      // Stage 2: Grand Sakura Pavilion at (0, 0) + 4 Ancient Chime Bells with Crystal Light Bridges
+      const pav = createSakuraPavilionCenterpiece();
+      pav.root.position.set(0, getGroundHeight(0, 0), 0);
+      this.stagePropsGroup.add(pav.root);
+      this.centerpieceRig = { root: pav.root, rotatingPart: pav.crystalCore };
+
+      for (const bell of this.missionState.bells) {
+        const bRig = createHarmonicBellAndBridgeModel(bell.x, bell.z);
+        const by = getGroundHeight(bell.x, bell.z);
+        bRig.root.position.set(bell.x, by, bell.z);
+        bRig.root.rotation.y = Math.atan2(-bell.x, -bell.z);
+        this.stagePropsGroup.add(bRig.root);
+        this.stagePropsGroup.add(bRig.bridgeMesh);
+        this.bellRigs.push(bRig);
+      }
+    } else if (mode === 'heart_tree_defense') {
+      // Stage 3: Colossal Ancient Amber Heart-Tree at (0, 0) + 3 Golden Pulse Totems
+      const tree = createHeartTreeCenterpiece();
+      tree.root.position.set(0, getGroundHeight(0, 0), 0);
+      this.stagePropsGroup.add(tree.root);
+      this.centerpieceRig = { root: tree.root, rotatingPart: tree.heartCore };
+
+      for (const totem of this.missionState.totems) {
+        const tRig = createDefenseTotemModel();
+        const ty = getGroundHeight(totem.x, totem.z);
+        tRig.root.position.set(totem.x, ty, totem.z);
+        this.stagePropsGroup.add(tRig.root);
+        this.totemRigs.push(tRig);
+      }
+    } else if (mode === 'meteor_rush') {
+      // Stage 4: Aurora Prism Spire at (0, 0) + Falling Starlight Meteors
+      const spire = createAuroraSpireCenterpiece();
+      spire.root.position.set(0, getGroundHeight(0, 0), 0);
+      this.stagePropsGroup.add(spire.root);
+      this.centerpieceRig = { root: spire.root, rotatingPart: spire.spireMesh };
+
+      for (const meteor of this.missionState.meteors) {
+        const mRig = createStarlightMeteorModel();
+        const my = getGroundHeight(meteor.x, meteor.z);
+        mRig.root.position.set(meteor.x, my, meteor.z);
+        this.stagePropsGroup.add(mRig.root);
+        this.meteorRigs.push(mRig);
+      }
+    }
   }
 
   private spawnEnemies(count: number): void {
@@ -865,6 +1012,8 @@ export class GameEngine {
       }
     });
 
+    this.rebuildStageMissionLayout();
+
     this.enemies.forEach((e) => this.scene.remove(e.rig.root));
     this.enemies = [];
     this.spawnEnemies(chapter.enemyCount);
@@ -873,10 +1022,6 @@ export class GameEngine {
       const ang = Math.random() * Math.PI * 2;
       const rad = 6 + Math.random() * 23;
       this.spawnPickup(Math.cos(ang) * rad, Math.sin(ang) * rad);
-    }
-
-    if (this.bossRig) {
-      this.bossRig.shieldRing.visible = true;
     }
 
     this.triggeredStoryEvents.clear();
@@ -1000,12 +1145,7 @@ export class GameEngine {
         );
 
         if (res.wasCleansed) {
-          this.totalEnemiesCleansed++;
-          this.player.score += 150;
-          this.recordQuestProgress('cleanse_gloomlings', 1);
-          sound.playCleansed();
-          this.spawnPickup(e.x, e.z);
-          this.refreshHomeTrophies();
+          this.onEnemyCleansed(e.x, e.z, 150);
         }
       }
     }
@@ -1014,12 +1154,16 @@ export class GameEngine {
       this.recordQuestProgress('combo_finishers', 1);
     }
 
-    if (!this.bossCleansed) {
+    if (this.triggerStageMissionAction(attackRange + 1.0)) {
+      hitAny = true;
+    }
+
+    if (!this.bossCleansed && this.missionState.mode === 'boss_duel') {
       const dToBoss = distance(this.playerPos.x, this.playerPos.z, 0, 0);
-      if (dToBoss <= attackRange + 1.4) {
+      if (dToBoss <= attackRange + 1.6) {
         hitAny = true;
-        const allShrinesDone = this.shrines.every((s) => s.isRestored);
-        const effDamage = allShrinesDone ? attack.damage * 1.5 : attack.damage * 0.5;
+        const stunMult = this.missionState.bossStunRemaining > 0 ? 3.0 : 1.25;
+        const effDamage = attack.damage * stunMult;
         this.bossHp = Math.max(0, this.bossHp - effDamage);
         this.particles.spawn(0, 2.0, 0, 0.7, 0.2, 0.9, 14);
         this.triggerStoryBeat('boss_damaged');
@@ -1038,22 +1182,59 @@ export class GameEngine {
     }
   }
 
-  private cleanseBoss(): void {
+  private onEnemyCleansed(x: number, z: number, scoreReward: number): void {
+    this.totalEnemiesCleansed++;
+    this.player.score += scoreReward;
+    this.recordQuestProgress('cleanse_gloomlings', 1);
+    sound.playCleansed();
+    this.spawnPickup(x, z);
+    this.spawnPickup(x + (Math.random() - 0.5) * 1.4, z + (Math.random() - 0.5) * 1.4);
+    if (this.player.hp < this.player.maxHp) {
+      this.player.hp = Math.min(this.player.maxHp, this.player.hp + 1);
+    }
+    this.refreshHomeTrophies();
+
+    // Stage 3 (Heart-Tree Defense): Count towards wave defense objective!
+    if (this.missionState.mode === 'heart_tree_defense') {
+      this.missionState.currentCount++;
+      if (this.missionState.currentCount === 3) {
+        this.missionState.currentWave = 2;
+        this.triggerStoryBeat('shrine_1');
+        this.spawnEnemies(3);
+      } else if (this.missionState.currentCount === 6) {
+        this.missionState.currentWave = 3;
+        this.triggerStoryBeat('shrine_2');
+        this.spawnEnemies(3);
+      } else if (this.missionState.currentCount >= this.missionState.targetCount) {
+        this.completeStageMission();
+      }
+    }
+  }
+
+  private completeStageMission(): void {
     if (this.bossCleansed) return;
     this.bossCleansed = true;
     this.bossHp = 0;
+    this.shrines.forEach((s) => {
+      s.isRestored = true;
+    });
     this.player.score += 1000;
+    this.triggerStoryBeat('boss_cleansed');
+    sound.playShrineRestored();
+    this.particles.spawn(this.playerPos.x, this.playerPos.y + 1.8, this.playerPos.z, 0.2, 0.95, 0.4, 36);
+    this.refreshHomeTrophies();
+    this.checkGameOutcome();
+  }
+
+  private cleanseBoss(): void {
+    if (this.bossCleansed) return;
     if (this.bossRig) {
       (this.bossRig.core.material as THREE.MeshStandardMaterial).emissive.setHex(0x00ff88);
       this.bossRig.eyeMat.color.setHex(0x80ffdb);
       this.bossRig.eyeMat.emissive.setHex(0x06d6a0);
       this.bossRig.shieldRing.visible = false;
     }
-    this.triggerStoryBeat('boss_cleansed');
-    sound.playShrineRestored();
-    this.particles.spawn(0, 2.5, 0, 0.2, 0.95, 0.4, 32);
-    this.refreshHomeTrophies();
-    this.checkGameOutcome();
+    this.completeStageMission();
   }
 
   public triggerPlayerDash(): void {
@@ -1117,21 +1298,21 @@ export class GameEngine {
         e.vz = (dz / len) * 14;
 
         if (res.wasCleansed) {
-          this.totalEnemiesCleansed++;
-          this.player.score += 200;
-          this.recordQuestProgress('cleanse_gloomlings', 1);
-          this.spawnPickup(e.x, e.z);
-          this.refreshHomeTrophies();
+          this.onEnemyCleansed(e.x, e.z, 200);
         }
       }
     }
 
-    if (!this.bossCleansed) {
+    if (this.triggerStageMissionAction(GAME_CONSTANTS.SPIN_RADIUS)) {
+      hitCount++;
+    }
+
+    if (!this.bossCleansed && this.missionState.mode === 'boss_duel') {
       const dToBoss = distance(this.playerPos.x, this.playerPos.z, 0, 0);
-      if (dToBoss <= GAME_CONSTANTS.SPIN_RADIUS + 1.2) {
+      if (dToBoss <= GAME_CONSTANTS.SPIN_RADIUS + 1.5) {
         hitCount++;
-        const allShrinesDone = this.shrines.every((s) => s.isRestored);
-        this.bossHp = Math.max(0, this.bossHp - (allShrinesDone ? 3.5 : 1.2));
+        const stunMult = this.missionState.bossStunRemaining > 0 ? 3.0 : 1.3;
+        this.bossHp = Math.max(0, this.bossHp - 2.6 * stunMult);
         this.triggerStoryBeat('boss_damaged');
         if (this.bossHp <= 0) {
           this.cleanseBoss();
@@ -1146,7 +1327,128 @@ export class GameEngine {
     }
   }
 
+  /**
+   * Handles stage-specific interactive props (Bramble Cages, Chime Bells, Pulse Totems,
+   * Starlight Meteors, or Astral Boss Pillars) via either Whack/Spin or Interact [E].
+   */
+  private triggerStageMissionAction(radius: number): boolean {
+    const mode = this.missionState.mode;
+    const px = this.playerPos.x;
+    const pz = this.playerPos.z;
+    let acted = false;
+
+    if (mode === 'rescue_escort') {
+      for (let i = 0; i < this.missionState.lostSprouts.length; i++) {
+        const sp = this.missionState.lostSprouts[i];
+        if (sp.state === 'caged' && distance(px, pz, sp.cageX, sp.cageZ) <= radius) {
+          sp.state = 'following';
+          this.missionState.followingCount = this.missionState.lostSprouts.filter(
+            (s) => s.state === 'following'
+          ).length;
+          const rig = this.sproutRigs[i];
+          if (rig) {
+            rig.cageRoot.visible = false;
+          }
+          this.player.score += 200;
+          sound.playShrineRestored();
+          this.particles.spawn(sp.cageX, getGroundHeight(sp.cageX, sp.cageZ) + 1.0, sp.cageZ, 0.4, 1.0, 0.5, 28, 4.5);
+          this.triggerStoryBeat('shrine_1');
+          acted = true;
+        }
+      }
+    } else if (mode === 'harmonic_bells') {
+      for (let i = 0; i < this.missionState.bells.length; i++) {
+        const bell = this.missionState.bells[i];
+        if (!bell.isRung && distance(px, pz, bell.x, bell.z) <= radius + 0.6) {
+          bell.isRung = true;
+          this.missionState.currentCount = this.missionState.bells.filter((b) => b.isRung).length;
+          this.missionState.allBellsRung = this.missionState.currentCount >= this.missionState.targetCount;
+          const rig = this.bellRigs[i];
+          if (rig) {
+            (rig.bellMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.25;
+            (rig.bridgeMesh.material as THREE.MeshStandardMaterial).opacity = 0.88;
+            (rig.bridgeMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.0;
+          }
+          this.player.score += 220;
+          this.recordQuestProgress('restore_shrines', 1);
+          sound.playShrineRestored();
+          this.particles.spawn(bell.x, getGroundHeight(bell.x, bell.z) + 1.8, bell.z, 1.0, 0.7, 0.85, 30, 5.0);
+          if (this.missionState.allBellsRung) {
+            this.triggerStoryBeat('all_shrines_restored');
+          } else {
+            this.triggerStoryBeat('shrine_1');
+          }
+          acted = true;
+        }
+      }
+      if (this.missionState.allBellsRung && distance(px, pz, 0, 0) <= 5.5) {
+        this.completeStageMission();
+        acted = true;
+      }
+    } else if (mode === 'heart_tree_defense') {
+      for (let i = 0; i < this.missionState.totems.length; i++) {
+        const totem = this.missionState.totems[i];
+        if (totem.cooldown <= 0 && distance(px, pz, totem.x, totem.z) <= radius + 0.5) {
+          totem.cooldown = 7.5;
+          this.missionState.heartTreeHp = Math.min(
+            this.missionState.heartTreeMaxHp,
+            this.missionState.heartTreeHp + 18
+          );
+          this.player.hp = Math.min(this.player.maxHp, this.player.hp + 1);
+          sound.playShrineRestored();
+          this.particles.spawn(totem.x, getGroundHeight(totem.x, totem.z) + 1.5, totem.z, 1.0, 0.8, 0.2, 32, 5.5);
+
+          // Golden shockwave damages & knocks back all nearby critters!
+          for (const item of this.enemies) {
+            const e = item.state;
+            if (e.state === 'cleansed') continue;
+            if (distance(0, 0, e.x, e.z) <= 18) {
+              const res = damageEnemy(e, 3.0);
+              item.state = res.enemy;
+              if (res.wasCleansed) {
+                this.onEnemyCleansed(e.x, e.z, 180);
+              }
+            }
+          }
+          acted = true;
+        }
+      }
+    } else if (mode === 'boss_duel') {
+      for (let idx = 0; idx < this.shrines.length; idx++) {
+        const shrine = this.shrines[idx];
+        if (!shrine.isRestored && distance(px, pz, shrine.x, shrine.z) <= radius + 0.8) {
+          shrine.isRestored = true;
+          shrine.currentSeeds = shrine.requiredSeeds;
+          this.missionState.bossStunRemaining = 7.5;
+          const rig = this.shrineRigs[idx];
+          if (rig) {
+            (rig.ring.material as THREE.MeshStandardMaterial).emissive.setHex(0x4cc9f0);
+            (rig.ring.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.1;
+            rig.beamMesh.visible = true;
+          }
+          if (this.bossRig) {
+            this.bossRig.shieldRing.visible = false;
+          }
+          this.bossHp = Math.max(1.0, this.bossHp - this.bossMaxHp * 0.2);
+          this.player.hp = Math.min(this.player.maxHp, this.player.hp + 1);
+          this.recordQuestProgress('restore_shrines', 1);
+          sound.playShrineRestored();
+          this.particles.spawn(shrine.x, getGroundHeight(shrine.x, shrine.z) + 2.0, shrine.z, 0.3, 0.9, 1.0, 32, 5.0);
+          this.triggerStoryBeat('shrine_1');
+          acted = true;
+        }
+      }
+    }
+
+    return acted;
+  }
+
   public triggerPlayerInteract(): void {
+    if (this.triggerStageMissionAction(GAME_CONSTANTS.SHRINE_INTERACT_RADIUS)) {
+      this.dispatchHUD();
+      return;
+    }
+
     for (let idx = 0; idx < this.shrines.length; idx++) {
       const shrine = this.shrines[idx];
       const res = tryDepositSeedInShrine(this.player, shrine, this.playerPos.x, this.playerPos.z);
@@ -1154,52 +1456,10 @@ export class GameEngine {
         this.player = res.player;
         this.shrines[idx] = res.shrine;
         sound.playPickup();
-
-        const rig = this.shrineRigs[idx];
-        if (rig) {
-          const ratio = res.shrine.currentSeeds / res.shrine.requiredSeeds;
-          rig.light.intensity = 0.5 + ratio * 2.0;
-        }
-
         this.refreshHomeTrophies();
-
         if (res.justCompleted) {
           this.recordQuestProgress('restore_shrines', 1);
           sound.playShrineRestored();
-          if (rig) {
-            (rig.ring.material as THREE.MeshStandardMaterial).emissive.setHex(0xffaa00);
-            (rig.ring.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.95;
-            rig.beamMesh.visible = true;
-          }
-          this.particles.spawn(
-            shrine.x,
-            getGroundHeight(shrine.x, shrine.z) + 2.0,
-            shrine.z,
-            1.0,
-            0.85,
-            0.2,
-            35,
-            5
-          );
-
-          // Solar beam from restored shrine weakens the Central Boss significantly!
-          const restoredCount = this.shrines.filter((s) => s.isRestored).length;
-          this.bossHp = Math.max(1.0, this.bossHp - this.bossMaxHp * 0.22);
-
-          if (restoredCount === 1) {
-            this.triggerStoryBeat('shrine_1');
-          } else if (restoredCount === 2) {
-            this.triggerStoryBeat('shrine_2');
-          } else if (restoredCount === 3) {
-            this.triggerStoryBeat('shrine_3');
-          } else if (restoredCount >= this.shrines.length) {
-            if (this.bossRig) {
-              this.bossRig.shieldRing.visible = false;
-            }
-            this.particles.spawn(0, 2.2, 0, 1.0, 0.85, 0.25, 36, 6.0);
-            this.triggerStoryBeat('all_shrines_restored');
-          }
-
           this.checkGameOutcome();
         }
         this.dispatchHUD();
@@ -1366,6 +1626,7 @@ export class GameEngine {
 
     this.player = tickPlayerTimers(this.player, dt, weatherMods.dashCooldownMultiplier);
     this.updatePlayerMovement(dt);
+    this.updateStageMission(dt);
     this.updatePickups(dt, weatherMods.seedScoreBonusMultiplier);
     this.updateEnemies(dt, weatherMods.enemySpeedMultiplier);
     this.updateProjectiles(dt);
@@ -1376,6 +1637,183 @@ export class GameEngine {
     if (this.elapsedTime - this.lastHUDTick >= 0.12) {
       this.lastHUDTick = this.elapsedTime;
       this.dispatchHUD();
+    }
+  }
+
+  private updateStageMission(dt: number): void {
+    const mode = this.missionState.mode;
+    const px = this.playerPos.x;
+    const pz = this.playerPos.z;
+
+    if (this.centerpieceRig?.rotatingPart) {
+      this.centerpieceRig.rotatingPart.rotation.y += dt * 1.1;
+    }
+
+    if (this.missionState.speedBoostRemaining > 0) {
+      this.missionState.speedBoostRemaining = Math.max(0, this.missionState.speedBoostRemaining - dt);
+    }
+    if (this.missionState.bossStunRemaining > 0) {
+      this.missionState.bossStunRemaining = Math.max(0, this.missionState.bossStunRemaining - dt);
+    }
+
+    // Check Wind-Stream / Aurora Boost Pads
+    for (let i = 0; i < this.missionState.boostPads.length; i++) {
+      const pad = this.missionState.boostPads[i];
+      const rig = this.boostPadRigs[i];
+      if (rig) {
+        rig.ring.rotation.z += dt * 2.5;
+      }
+      if (distance(px, pz, pad.x, pad.z) <= 2.1) {
+        if (this.missionState.speedBoostRemaining <= 0.5) {
+          sound.playDash();
+          this.particles.spawn(px, this.playerPos.y + 0.5, pz, 0.5, 1.0, 0.95, 14, 3.5);
+        }
+        this.missionState.speedBoostRemaining = 3.5;
+      }
+    }
+
+    // Mode 1: Rescue & Escort Lost Sproutlings
+    if (mode === 'rescue_escort') {
+      let followOrder = 0;
+      for (let i = 0; i < this.missionState.lostSprouts.length; i++) {
+        const sp = this.missionState.lostSprouts[i];
+        const rig = this.sproutRigs[i];
+        if (!rig) continue;
+
+        if (sp.state === 'caged') {
+          // Auto-free if Pip walks right up to the cage or whacks it
+          const hop = Math.abs(Math.sin(this.elapsedTime * 6 + i)) * 0.18;
+          rig.sproutRoot.position.set(sp.x, getGroundHeight(sp.x, sp.z) + hop, sp.z);
+        } else if (sp.state === 'following') {
+          followOrder++;
+          const targetDist = 1.45 * followOrder;
+          const dx = px - sp.x;
+          const dz = pz - sp.z;
+          const d = Math.hypot(dx, dz);
+          if (d > targetDist) {
+            const moveStep = Math.min(d - targetDist, 8.2 * dt);
+            sp.x += (dx / d) * moveStep;
+            sp.z += (dz / d) * moveStep;
+            rig.sproutRoot.rotation.y = Math.atan2(dx, dz);
+          }
+          const hop = Math.abs(Math.sin(this.elapsedTime * 11 + i)) * 0.35;
+          rig.sproutRoot.position.set(sp.x, getGroundHeight(sp.x, sp.z) + hop, sp.z);
+
+          // Check if brought to Safe Sanctuary Cottage (0, 13.5) or Central Gazebo (0, 0)
+          if (
+            distance(sp.x, sp.z, this.missionState.safeZoneX, this.missionState.safeZoneZ) <= 6.8 ||
+            distance(sp.x, sp.z, 0, 0) <= 4.5
+          ) {
+            sp.state = 'rescued';
+            this.missionState.currentCount = this.missionState.lostSprouts.filter(
+              (s) => s.state === 'rescued'
+            ).length;
+            this.missionState.followingCount = this.missionState.lostSprouts.filter(
+              (s) => s.state === 'following'
+            ).length;
+            // Place rescued sproutling happily dancing around the Safe Cottage
+            const angle = this.missionState.currentCount * 1.1;
+            sp.x = this.missionState.safeZoneX + Math.cos(angle) * 2.4;
+            sp.z = this.missionState.safeZoneZ + Math.sin(angle) * 2.4;
+            rig.sproutRoot.position.set(sp.x, getGroundHeight(sp.x, sp.z), sp.z);
+            this.player.score += 350;
+            this.recordQuestProgress('restore_shrines', 1);
+            sound.playShrineRestored();
+            this.particles.spawn(sp.x, getGroundHeight(sp.x, sp.z) + 1.2, sp.z, 1.0, 0.9, 0.25, 32, 5.0);
+
+            if (this.missionState.currentCount >= this.missionState.targetCount) {
+              this.completeStageMission();
+            } else {
+              this.triggerStoryBeat('shrine_2');
+            }
+          }
+        } else if (sp.state === 'rescued') {
+          const hop = Math.abs(Math.sin(this.elapsedTime * 8 + i)) * 0.25;
+          rig.sproutRoot.position.y = getGroundHeight(sp.x, sp.z) + hop;
+          rig.sproutRoot.rotation.y += dt * 2.0;
+        }
+      }
+    }
+
+    // Mode 2: Sakura Harmonic Bells & Central Pavilion
+    if (mode === 'harmonic_bells') {
+      for (let i = 0; i < this.missionState.bells.length; i++) {
+        const bell = this.missionState.bells[i];
+        const rig = this.bellRigs[i];
+        if (rig && bell.isRung) {
+          rig.bellMesh.rotation.z = Math.sin(this.elapsedTime * 8 + i) * 0.14;
+          rig.haloRing.rotation.z += dt * 1.8;
+        }
+      }
+      if (this.missionState.allBellsRung && distance(px, pz, 0, 0) <= 4.5) {
+        this.completeStageMission();
+      }
+    }
+
+    // Mode 3: Heart-Tree Wave Defense
+    if (mode === 'heart_tree_defense') {
+      for (let i = 0; i < this.missionState.totems.length; i++) {
+        const totem = this.missionState.totems[i];
+        const rig = this.totemRigs[i];
+        if (totem.cooldown > 0) {
+          totem.cooldown = Math.max(0, totem.cooldown - dt);
+        }
+        if (rig) {
+          rig.orb.rotation.y += dt * 2.2;
+          rig.orb.position.y = 1.7 + Math.sin(this.elapsedTime * 4 + i) * 0.12;
+          (rig.orb.material as THREE.MeshStandardMaterial).emissiveIntensity =
+            totem.cooldown <= 0 ? 1.2 : 0.2;
+        }
+      }
+    }
+
+    // Mode 4: Falling Starlight Meteor Rush
+    if (mode === 'meteor_rush') {
+      for (let i = 0; i < this.missionState.meteors.length; i++) {
+        const meteor = this.missionState.meteors[i];
+        const rig = this.meteorRigs[i];
+        if (!rig || meteor.collected) continue;
+
+        meteor.timeRemaining -= dt;
+        rig.core.rotation.y += dt * 2.8;
+        rig.core.position.y = 0.75 + Math.sin(this.elapsedTime * 5 + i) * 0.18;
+        const scaleRatio = Math.max(0.25, meteor.timeRemaining / meteor.maxTime);
+        rig.timerRing.scale.set(scaleRatio, scaleRatio, 1);
+
+        // Collect meteor by touching it!
+        if (distance(px, pz, meteor.x, meteor.z) <= 2.35) {
+          meteor.collected = true;
+          this.missionState.currentCount++;
+          this.player.score += 250;
+          this.recordQuestProgress('harvest_seeds', 1);
+          sound.playShrineRestored();
+          this.particles.spawn(meteor.x, getGroundHeight(meteor.x, meteor.z) + 1.0, meteor.z, 0.5, 1.0, 0.9, 28, 4.8);
+
+          if (this.missionState.currentCount >= this.missionState.targetCount) {
+            rig.root.visible = false;
+            this.completeStageMission();
+            return;
+          } else {
+            // Respawn a new falling meteor at a fresh location!
+            const ang = Math.random() * Math.PI * 2;
+            const rad = 12 + Math.random() * 16;
+            meteor.x = Math.cos(ang) * rad;
+            meteor.z = Math.sin(ang) * rad;
+            meteor.timeRemaining = 28;
+            meteor.collected = false;
+            rig.root.position.set(meteor.x, getGroundHeight(meteor.x, meteor.z), meteor.z);
+            this.triggerStoryBeat('shrine_1');
+          }
+        } else if (meteor.timeRemaining <= 0) {
+          // If timer expires, respawn a fresh meteor at a new spot so the player can always win!
+          const ang = Math.random() * Math.PI * 2;
+          const rad = 11 + Math.random() * 16;
+          meteor.x = Math.cos(ang) * rad;
+          meteor.z = Math.sin(ang) * rad;
+          meteor.timeRemaining = 28;
+          rig.root.position.set(meteor.x, getGroundHeight(meteor.x, meteor.z), meteor.z);
+        }
+      }
     }
   }
 
@@ -1409,6 +1847,7 @@ export class GameEngine {
     }
 
     const inputLen = Math.hypot(inputX, inputZ);
+    const boostMult = this.missionState.speedBoostRemaining > 0 ? 1.55 : 1.0;
 
     if (this.isDashing) {
       this.dashTimer -= dt;
@@ -1423,12 +1862,12 @@ export class GameEngine {
       const normZ = inputZ / inputLen;
 
       this.playerFacing = Math.atan2(normX, normZ);
-      const speed = GAME_CONSTANTS.PLAYER_SPEED * Math.min(1.0, inputLen);
+      const speed = GAME_CONSTANTS.PLAYER_SPEED * boostMult * Math.min(1.0, inputLen);
 
       this.playerPos.x += normX * speed * dt;
       this.playerPos.z += normZ * speed * dt;
 
-      this.walkCycle += dt * 14 * inputLen;
+      this.walkCycle += dt * 14 * inputLen * boostMult;
     } else {
       this.walkCycle += dt * 2.5;
     }
@@ -1462,7 +1901,6 @@ export class GameEngine {
     this.hero.leftFoot.position.z = Math.sin(this.walkCycle) * 0.18;
     this.hero.rightFoot.position.z = -Math.sin(this.walkCycle) * 0.18;
 
-    // Articulated Arm Swing, Staff Filigree & High/Ultra Aura Halo Rotation
     this.hero.leftArm.rotation.x = -Math.sin(this.walkCycle) * (isMoving ? 0.45 : 0.08);
     this.hero.rightArm.rotation.x = Math.sin(this.walkCycle) * (isMoving ? 0.32 : 0.06);
     this.hero.staffRing.rotation.z += 0.04;
@@ -1497,6 +1935,7 @@ export class GameEngine {
         bossMaxHp: this.bossMaxHp,
         bossCleansed: this.bossCleansed,
         chapterNumber: this.currentChapterNumber,
+        missionState: this.missionState,
       });
       this.hero.compassGroup.visible = obj.currentStep < 3;
       this.hero.compassGroup.rotation.y = obj.angleToTargetRad - this.playerFacing;
@@ -1579,13 +2018,23 @@ export class GameEngine {
         e.z = GAME_CONSTANTS.HOME_BASE_Z + pushDz * (GAME_CONSTANTS.HOME_BASE_SAFE_RADIUS + 1.05);
       }
 
+      // In Stage 3 (Heart-Tree Defense), critters march toward the central Heart-Tree (0, 0) unless Pip is close!
+      const isDefenseMode = this.missionState.mode === 'heart_tree_defense';
       const distToPlayer = distance(e.x, e.z, pX, pZ);
+      const distToTree = distance(e.x, e.z, 0, 0);
+      const targetPosX = isDefenseMode && distToPlayer > 7.5 ? 0 : pX;
+      const targetPosZ = isDefenseMode && distToPlayer > 7.5 ? 0 : pZ;
+      const distToTarget = Math.max(0.1, distance(e.x, e.z, targetPosX, targetPosZ));
       const effSpeed = e.speed * weatherSpeedMultiplier;
 
+      if (isDefenseMode && distToTree <= 2.5) {
+        this.missionState.heartTreeHp = Math.max(15, this.missionState.heartTreeHp - dt * 1.6);
+      }
+
       if (e.type === 'puffer') {
-        if (!playerInSafeZone && distToPlayer > 1.2) {
-          const dx = (pX - e.x) / distToPlayer;
-          const dz = (pZ - e.z) / distToPlayer;
+        if (!playerInSafeZone && distToTarget > 1.2) {
+          const dx = (targetPosX - e.x) / distToTarget;
+          const dz = (targetPosZ - e.z) / distToTarget;
           e.x += dx * effSpeed * dt;
           e.z += dz * effSpeed * dt;
           rig.root.rotation.y = Math.atan2(dx, dz);
@@ -1598,8 +2047,8 @@ export class GameEngine {
         const rRig = rig as ReturnType<typeof createRollerModel>;
 
         if (e.state === 'chase') {
-          const dx = (pX - e.x) / Math.max(0.1, distToPlayer);
-          const dz = (pZ - e.z) / Math.max(0.1, distToPlayer);
+          const dx = (targetPosX - e.x) / distToTarget;
+          const dz = (targetPosZ - e.z) / distToTarget;
           rig.root.rotation.y = Math.atan2(dx, dz);
 
           if (!playerInSafeZone && distToPlayer < 9.0) {
@@ -1645,10 +2094,10 @@ export class GameEngine {
         sRig.wings.rotation.y = Math.sin(this.elapsedTime * 20) * 0.4;
 
         const floatY = 1.6 + Math.sin(this.elapsedTime * 4 + i) * 0.25;
-        const idealDist = 7.5;
-        const diff = distToPlayer - idealDist;
-        const dx = (pX - e.x) / Math.max(0.1, distToPlayer);
-        const dz = (pZ - e.z) / Math.max(0.1, distToPlayer);
+        const idealDist = isDefenseMode ? 2.2 : 7.5;
+        const diff = distToTarget - idealDist;
+        const dx = (targetPosX - e.x) / distToTarget;
+        const dz = (targetPosZ - e.z) / distToTarget;
 
         if (Math.abs(diff) > 1.0) {
           e.x += dx * Math.sign(diff) * effSpeed * dt;
@@ -1662,15 +2111,22 @@ export class GameEngine {
         rig.root.position.set(e.x, getGroundHeight(e.x, e.z) + floatY, e.z);
 
         e.timer += dt;
-        if (!playerInSafeZone && e.timer >= 3.2 && distToPlayer < 14) {
+        if (!playerInSafeZone && e.timer >= 3.4 && distToPlayer < 14) {
           e.timer = 0;
           this.spawnSparkProjectile(e.x, getGroundHeight(e.x, e.z) + floatY, e.z, dx, dz);
         }
       }
     }
 
-    if (this.enemies.length < 5 && this.gameState === 'playing') {
-      this.spawnEnemies(3);
+    const activeEnemies = this.enemies.filter((item) => item.state.state !== 'cleansed').length;
+    if (this.gameState === 'playing') {
+      if (this.missionState.mode === 'heart_tree_defense') {
+        if (activeEnemies === 0 && this.missionState.currentCount < this.missionState.targetCount) {
+          this.spawnEnemies(3);
+        }
+      } else if (activeEnemies < 3) {
+        this.spawnEnemies(2);
+      }
     }
   }
 
@@ -1793,19 +2249,45 @@ export class GameEngine {
   private dispatchHUD(summary?: { finalScore: number; stars: number; timeFormatted: string }): void {
     let isNearShrine = false;
     let nearShrinePrompt = '';
+    const px = this.playerPos.x;
+    const pz = this.playerPos.z;
+    const mode = this.missionState.mode;
 
-    for (const shrine of this.shrines) {
-      const d = distance(this.playerPos.x, this.playerPos.z, shrine.x, shrine.z);
-      if (d <= GAME_CONSTANTS.SHRINE_INTERACT_RADIUS) {
-        isNearShrine = true;
-        if (shrine.isRestored) {
-          nearShrinePrompt = `${shrine.name} Restored!`;
-        } else if (this.player.sunSeeds > 0) {
-          nearShrinePrompt = `Press E or Tap RESTORE to deposit Sun-Seed (${shrine.currentSeeds}/${shrine.requiredSeeds})`;
-        } else {
-          nearShrinePrompt = `Need ${shrine.requiredSeeds - shrine.currentSeeds} more Sun-Seeds to restore Shrine!`;
+    if (mode === 'rescue_escort') {
+      for (const sp of this.missionState.lostSprouts) {
+        if (sp.state === 'caged' && distance(px, pz, sp.cageX, sp.cageZ) <= GAME_CONSTANTS.SHRINE_INTERACT_RADIUS) {
+          isNearShrine = true;
+          nearShrinePrompt = 'Break Bramble Cage [Space / E] to free the Lost Sproutling!';
+          break;
         }
-        break;
+      }
+    } else if (mode === 'harmonic_bells') {
+      for (const bell of this.missionState.bells) {
+        if (!bell.isRung && distance(px, pz, bell.x, bell.z) <= GAME_CONSTANTS.SHRINE_INTERACT_RADIUS) {
+          isNearShrine = true;
+          nearShrinePrompt = 'Ring Ancient Chime Bell [Space / E] to light the Crystal Bridge!';
+          break;
+        }
+      }
+      if (!isNearShrine && this.missionState.allBellsRung && distance(px, pz, 0, 0) <= 5.5) {
+        isNearShrine = true;
+        nearShrinePrompt = 'Enter Central Sakura Pavilion [Space / E] to complete the stage!';
+      }
+    } else if (mode === 'heart_tree_defense') {
+      for (const totem of this.missionState.totems) {
+        if (totem.cooldown <= 0 && distance(px, pz, totem.x, totem.z) <= GAME_CONSTANTS.SHRINE_INTERACT_RADIUS) {
+          isNearShrine = true;
+          nearShrinePrompt = 'Trigger Healing Pulse Totem [Space / E] to heal the Heart-Tree & repel critters!';
+          break;
+        }
+      }
+    } else if (mode === 'boss_duel') {
+      for (const shrine of this.shrines) {
+        if (!shrine.isRestored && distance(px, pz, shrine.x, shrine.z) <= GAME_CONSTANTS.SHRINE_INTERACT_RADIUS) {
+          isNearShrine = true;
+          nearShrinePrompt = 'Activate Starlight Pillar [Space / E] to stun the Boss (No Seeds Needed)!';
+          break;
+        }
       }
     }
 
@@ -1822,6 +2304,7 @@ export class GameEngine {
       bossMaxHp: this.bossMaxHp,
       bossCleansed: this.bossCleansed,
       chapterNumber: this.currentChapterNumber,
+      missionState: this.missionState,
     });
 
     this.onHUDUpdate({
@@ -1849,6 +2332,14 @@ export class GameEngine {
       bossMaxHp: this.bossMaxHp,
       bossCleansed: this.bossCleansed,
       stageObjective,
+      missionState: {
+        ...this.missionState,
+        lostSprouts: this.missionState.lostSprouts.map((s) => ({ ...s })),
+        bells: this.missionState.bells.map((b) => ({ ...b })),
+        totems: this.missionState.totems.map((t) => ({ ...t })),
+        meteors: this.missionState.meteors.map((m) => ({ ...m })),
+        boostPads: this.missionState.boostPads.map((p) => ({ ...p })),
+      },
       currentStoryBeat: this.currentStoryBeat,
       storyHistory: [...this.storyHistory],
       performanceQuality: this.performanceQuality,
