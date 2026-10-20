@@ -211,7 +211,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 <div className="flex items-center gap-1">
                   <Sparkles className="w-4 h-4 text-[#06d6a0]" />
                   <span className="text-sm font-black text-[#06d6a0] tabular-nums">
-                    {missionState.rescuedCount}/{missionState.totalToRescue}
+                    {missionState.currentCount}/{missionState.targetCount}
                   </span>
                   <span className="text-[10px] font-bold text-[#d8f3dc]/85">
                     {isFa ? 'جوانه امن' : 'Rescued'}
@@ -231,7 +231,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 <div className="flex items-center gap-1">
                   <Sparkles className="w-4 h-4 text-[#ffb3c6]" />
                   <span className="text-sm font-black text-[#ffb3c6] tabular-nums">
-                    {missionState.bellsRungCount}/3
+                    {missionState.currentCount}/{missionState.targetCount}
                   </span>
                   <span className="text-[10px] font-bold text-[#d8f3dc]/85">
                     {isFa ? 'زنگوله' : 'Bells'}
@@ -239,7 +239,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 </div>
                 <div className="w-[1px] h-3.5 bg-[#709775]/40" />
                 <span className="text-[10px] font-bold text-[#ffd166]">
-                  {missionState.bridgesUnlocked
+                  {missionState.allBellsRung
                     ? isFa
                       ? 'پل نوری: باز شد ✓'
                       : 'Light Bridge: Open ✓'
@@ -264,8 +264,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 <div className="w-[1px] h-3.5 bg-[#709775]/40" />
                 <span className="text-[10px] font-bold text-[#06d6a0] tabular-nums">
                   {isFa
-                    ? `مهاجمان: ${missionState.waveEnemiesDefeated}/${missionState.waveEnemiesTotal}`
-                    : `Wave: ${missionState.waveEnemiesDefeated}/${missionState.waveEnemiesTotal}`}
+                    ? `مهاجمان: ${missionState.currentCount}/${missionState.targetCount}`
+                    : `Wave: ${missionState.currentCount}/${missionState.targetCount}`}
                 </span>
               </>
             )}
@@ -275,7 +275,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 <div className="flex items-center gap-1">
                   <Sparkles className="w-4 h-4 text-[#48cae4]" />
                   <span className="text-sm font-black text-[#48cae4] tabular-nums">
-                    {missionState.meteorsCollected}/{missionState.meteorsTarget}
+                    {missionState.currentCount}/{missionState.targetCount}
                   </span>
                   <span className="text-[10px] font-bold text-[#d8f3dc]/85">
                     {isFa ? 'شهاب‌سنگ' : 'Meteors'}
@@ -283,10 +283,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 </div>
                 <div className="w-[1px] h-3.5 bg-[#709775]/40" />
                 <span className="text-[10px] font-bold text-[#ffd166] tabular-nums">
-                  {missionState.speedBoostTimer > 0
+                  {missionState.speedBoostRemaining > 0
                     ? isFa
-                      ? `شتاب کریستالی: ${missionState.speedBoostTimer.toFixed(1)}s`
-                      : `Boost: ${missionState.speedBoostTimer.toFixed(1)}s`
+                      ? `شتاب کریستالی: ${missionState.speedBoostRemaining.toFixed(1)}s`
+                      : `Boost: ${missionState.speedBoostRemaining.toFixed(1)}s`
                     : isFa
                     ? 'سکوی پرش فعال'
                     : 'Boost Pads Ready'}

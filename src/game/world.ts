@@ -11,10 +11,12 @@
 import * as THREE from 'three';
 import {
   getStageBiomeTheme,
+  generateStageMapLayout,
   type WeatherType,
   type DayNightEnvironmentState,
   type GraphicsQualityProfile,
   type StageBiomeTheme,
+  type StageMapLayout,
 } from './rules';
 
 export function getGroundHeight(x: number, z: number): number {
@@ -300,7 +302,7 @@ export interface EnvironmentDetailRig {
   highDetailFoliageGroup: THREE.Group;
   ultraDetailGroup: THREE.Group;
   applyQualityProfile: (profile: GraphicsQualityProfile) => void;
-  applyBiomeTheme: (biome: StageBiomeTheme) => void;
+  applyBiomeTheme: (biome: StageBiomeTheme, layout?: StageMapLayout) => void;
   updateDetails: (elapsedTime: number) => void;
 }
 
@@ -543,10 +545,14 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
   // Architectural Landmarks & Reflective Crystal Pond
   const architectureAndWaterGroup = new THREE.Group();
 
-  // 1. Reflective Crystal Mirror Pond at (10, 2)
+  // 1. Reflective Crystal Mirror Pond (Procedurally shifted per chapter via pondGroup)
+  const pondGroup = new THREE.Group();
   const pondX = 10;
   const pondZ = 2;
   const pondY = getGroundHeight(pondX, pondZ) + 0.06;
+  pondGroup.position.set(pondX, pondY, pondZ);
+  architectureAndWaterGroup.add(pondGroup);
+
   const waterGeo = new THREE.CircleGeometry(3.8, 32);
   waterGeo.rotateX(-Math.PI / 2);
   const waterMat = new THREE.MeshStandardMaterial({
@@ -559,16 +565,15 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
     opacity: 0.88,
   });
   const waterMesh = new THREE.Mesh(waterGeo, waterMat);
-  waterMesh.position.set(pondX, pondY, pondZ);
-  architectureAndWaterGroup.add(waterMesh);
+  pondGroup.add(waterMesh);
 
   // Cozy Wooden Pond Jetty / Stepping Pier
   const pierTimberMat = new THREE.MeshStandardMaterial({ color: 0x6f4518, roughness: 0.78 });
   for (let p = 0; p < 4; p++) {
     const plank = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.09, 0.34), pierTimberMat);
-    plank.position.set(pondX - 3.6 + p * 0.45, pondY + 0.08, pondZ);
+    plank.position.set(-3.6 + p * 0.45, 0.08, 0);
     plank.castShadow = true;
-    architectureAndWaterGroup.add(plank);
+    pondGroup.add(plank);
   }
 
   // Animated Crystal Pond Water Ripple Rings (Balanced -> Ultra)
@@ -591,7 +596,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
   }
   scene.add(waterRippleRingsGroup);
 
-  // Pond Rim Stones & Floating Lily Pads
+  // Pond Rim Stones & Floating Lily Pads (local to pondGroup)
   const lilyMat = new THREE.MeshStandardMaterial({ color: 0x52b788, roughness: 0.55 });
   const lotusMat = new THREE.MeshStandardMaterial({
     color: 0xffb3c6,
@@ -600,25 +605,25 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
   });
   for (let i = 0; i < 14; i++) {
     const ang = (i / 14) * Math.PI * 2;
-    const rx = pondX + Math.cos(ang) * 3.85;
-    const rz = pondZ + Math.sin(ang) * 3.85;
+    const rx = Math.cos(ang) * 3.85;
+    const rz = Math.sin(ang) * 3.85;
     const rimRock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.45, 0), stepStoneMat);
-    rimRock.position.set(rx, getGroundHeight(rx, rz) + 0.1, rz);
+    rimRock.position.set(rx, 0.06, rz);
     rimRock.scale.set(1.2, 0.65, 1.1);
-    architectureAndWaterGroup.add(rimRock);
+    pondGroup.add(rimRock);
   }
   [
-    [pondX - 1.1, pondZ + 0.8],
-    [pondX + 1.2, pondZ - 0.7],
-    [pondX + 0.2, pondZ + 1.5],
+    [-1.1, 0.8],
+    [1.2, -0.7],
+    [0.2, 1.5],
   ].forEach(([lx, lz], idx) => {
     const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.04, 12), lilyMat);
-    pad.position.set(lx, pondY + 0.03, lz);
-    architectureAndWaterGroup.add(pad);
+    pad.position.set(lx, 0.03, lz);
+    pondGroup.add(pad);
     if (idx < 2) {
       const lotus = new THREE.Mesh(new THREE.OctahedronGeometry(0.18, 0), lotusMat);
-      lotus.position.set(lx, pondY + 0.14, lz);
-      architectureAndWaterGroup.add(lotus);
+      lotus.position.set(lx, 0.14, lz);
+      pondGroup.add(lotus);
     }
   });
 
@@ -647,6 +652,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
     { x: 11, z: 11, rotY: Math.PI / 4 },
   ];
 
+  const archGroups: THREE.Group[] = [];
   archCoords.forEach((ac) => {
     const archGroup = new THREE.Group();
     const ay = getGroundHeight(ac.x, ac.z);
@@ -673,6 +679,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
 
     archGroup.add(leftCol, rightCol, lintel, topCrest, lantern);
     architectureAndWaterGroup.add(archGroup);
+    archGroups.push(archGroup);
   });
 
   scene.add(architectureAndWaterGroup);
@@ -698,12 +705,14 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
     [-18, 18], // Shrine 3
     [18, 18], // Shrine 4
   ];
+  const rayMeshes: THREE.Mesh[] = [];
   rayLocations.forEach(([rx, rz]) => {
     const ray = new THREE.Mesh(rayGeo, rayMat);
     ray.position.set(rx, getGroundHeight(rx, rz), rz);
     ray.rotation.z = -0.16;
     ray.rotation.x = 0.08;
     sunbeamGodRaysGroup.add(ray);
+    rayMeshes.push(ray);
   });
   scene.add(sunbeamGodRaysGroup);
 
@@ -834,10 +843,11 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
   let activeFireflies = 0;
 
   /**
-   * Dynamically re-colors the entire 3D world (terrain vertex colors, trees, mountains,
-   * wildflowers, grass, ferns, pond water, crystals, and fireflies) for the stage biome!
+   * Dynamically re-colors the entire 3D world and shifts the Pond, Stone Archways,
+   * Sunbeam Shafts, and Terrain Trail Patterns for each chapter's procedural layout!
    */
-  const applyBiomeTheme = (biome: StageBiomeTheme) => {
+  const applyBiomeTheme = (biome: StageBiomeTheme, layout?: StageMapLayout) => {
+    const activeLayout = layout ?? generateStageMapLayout(1);
     const cMeadow = new THREE.Color(biome.meadowHex);
     const cMoss = new THREE.Color(biome.mossHex);
     const cTrail = new THREE.Color(biome.trailHex);
@@ -845,26 +855,80 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
     const cCliff = new THREE.Color(biome.cliffHex);
     const tempColor = new THREE.Color();
 
+    // Shift Pond & Water Ripple Rings to activeLayout.pondX / pondZ
+    const py = getGroundHeight(activeLayout.pondX, activeLayout.pondZ) + 0.06;
+    pondGroup.position.set(activeLayout.pondX, py, activeLayout.pondZ);
+    const pondScale = activeLayout.pondRadius / 3.8;
+    pondGroup.scale.set(pondScale, 1, pondScale);
+    waterRippleRingsGroup.position.set(activeLayout.pondX, py + 0.025, activeLayout.pondZ);
+
+    // Shift the 4 Carved Stone Archways to activeLayout.archCoords
+    activeLayout.archCoords.forEach((ac, idx) => {
+      const grp = archGroups[idx];
+      if (grp) {
+        grp.position.set(ac.x, getGroundHeight(ac.x, ac.z), ac.z);
+        grp.rotation.y = ac.rotY;
+      }
+    });
+
+    // Shift Sunbeam God-Rays to Home Base + Shifted Shrine / Objective Coordinates
+    if (rayMeshes[0]) {
+      rayMeshes[0].position.set(0, getGroundHeight(0, 14), 14);
+    }
+    activeLayout.shrineCoords.forEach((sc, idx) => {
+      const ray = rayMeshes[idx + 1];
+      if (ray) {
+        ray.position.set(sc.x, getGroundHeight(sc.x, sc.z), sc.z);
+      }
+    });
+
     for (let i = 0; i < posAttr.count; i++) {
       const x = posAttr.getX(i);
       const z = posAttr.getZ(i);
       const distCenter = Math.hypot(x, z);
-      const distPond = Math.hypot(x - 10, z - 2);
+      const distPond = Math.hypot(x - activeLayout.pondX, z - activeLayout.pondZ);
 
-      const noiseMix = 0.5 + 0.5 * Math.sin(x * 0.14) * Math.cos(z * 0.14);
+      const noiseMix =
+        0.5 +
+        0.5 *
+          Math.sin(x * 0.14 + activeLayout.terrainWavePhaseX) *
+          Math.cos(z * 0.14 + activeLayout.terrainWavePhaseZ);
       tempColor.copy(cMeadow).lerp(cMoss, noiseMix * 0.65);
 
-      const distDiag1 = Math.abs(x - z);
-      const distDiag2 = Math.abs(x + z);
-      const onRadialTrail =
-        (distDiag1 < 2.2 || distDiag2 < 2.2) && distCenter > 3.5 && distCenter < 26.5;
-      const onRingPath = Math.abs(distCenter - 11.4) < 1.35;
-
-      if (onRadialTrail || onRingPath) {
-        tempColor.lerp(cTrail, 0.72);
+      const theta = Math.atan2(z, x);
+      let onProceduralTrail = false;
+      if (activeLayout.trailPattern === 'spiral_glade') {
+        const spiralWave = Math.sin(distCenter * 0.42 - theta * 2.0);
+        onProceduralTrail = spiralWave > 0.68 && distCenter > 3.2 && distCenter < 29.0;
+      } else if (activeLayout.trailPattern === 'twin_crescent') {
+        const c1 = Math.abs(Math.hypot(x - 6.5, z) - 12.5) < 1.65;
+        const c2 = Math.abs(Math.hypot(x + 6.5, z) - 12.5) < 1.65;
+        onProceduralTrail = (c1 || c2) && distCenter < 28.0;
+      } else if (activeLayout.trailPattern === 'star_pentagram') {
+        const starSpoke = Math.cos(theta * 5 + activeLayout.terrainWavePhaseX) > 0.84;
+        const outerRing = Math.abs(distCenter - 15.5) < 1.35;
+        onProceduralTrail = (starSpoke && distCenter > 3.5 && distCenter < 27.0) || outerRing;
+      } else if (activeLayout.trailPattern === 'serpentine_valley') {
+        const sCurve = Math.abs(x - Math.sin(z * 0.18) * 9.5) < 2.2;
+        const crossCurve = Math.abs(z - Math.cos(x * 0.18) * 9.5) < 2.0;
+        onProceduralTrail = (sCurve || crossCurve) && distCenter < 28.5;
+      } else {
+        const distDiag1 = Math.abs(x - z);
+        const distDiag2 = Math.abs(x + z);
+        const onRadialTrail =
+          (distDiag1 < 2.2 || distDiag2 < 2.2) && distCenter > 3.5 && distCenter < 26.5;
+        const onRingPath = Math.abs(distCenter - 11.4) < 1.35;
+        onProceduralTrail = onRadialTrail || onRingPath;
       }
-      if (distPond < 4.5) {
-        tempColor.lerp(cPondBed, Math.max(0, 1 - distPond / 4.5) * 0.65);
+
+      if (onProceduralTrail) {
+        tempColor.lerp(cTrail, 0.75);
+      }
+      if (distPond < activeLayout.pondRadius + 1.0) {
+        tempColor.lerp(
+          cPondBed,
+          Math.max(0, 1 - distPond / (activeLayout.pondRadius + 1.0)) * 0.68
+        );
       }
       if (distCenter > 36) {
         tempColor.lerp(cCliff, Math.min(1, (distCenter - 36) / 14));

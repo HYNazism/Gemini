@@ -22,6 +22,7 @@ import {
   type HomeBaseCustomization,
   type TrophyStatus,
   type StageBiomeTheme,
+  type StageObstacle,
 } from './rules';
 
 export function createContactShadowTexture(): THREE.CanvasTexture {
@@ -2067,5 +2068,120 @@ export function createBoostPadModel(isAurora: boolean): {
   root.add(innerDisc);
 
   return { root, ring };
+}
+
+/**
+ * Procedural Mid-Field 3D Obstacle Models (Moss Boulder, Hollow Log, Crystal Spire, Ruin Pillar)
+ * that shift positions and biome colors every chapter.
+ */
+export function createStageObstacleModel(
+  obstacle: StageObstacle,
+  biome: StageBiomeTheme
+): THREE.Group {
+  const root = new THREE.Group();
+  const s = obstacle.scale;
+
+  if (obstacle.type === 'moss_boulder') {
+    const rockMat = new THREE.MeshStandardMaterial({
+      color: biome.cliffHex,
+      roughness: 0.84,
+      metalness: 0.05,
+    });
+    const mossMat = new THREE.MeshStandardMaterial({
+      color: biome.canopyPrimaryHex,
+      roughness: 0.65,
+    });
+    const mainRock = new THREE.Mesh(new THREE.DodecahedronGeometry(1.15, 1), rockMat);
+    mainRock.scale.set(1.15, 0.85, 1.0);
+    mainRock.position.y = 0.72;
+    mainRock.castShadow = true;
+    mainRock.receiveShadow = true;
+    root.add(mainRock);
+
+    const mossCap = new THREE.Mesh(
+      new THREE.SphereGeometry(0.95, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.45),
+      mossMat
+    );
+    mossCap.position.y = 0.85;
+    root.add(mossCap);
+  } else if (obstacle.type === 'hollow_log') {
+    const barkMat = new THREE.MeshStandardMaterial({
+      color: biome.trunkHex,
+      roughness: 0.88,
+    });
+    const mossMat = new THREE.MeshStandardMaterial({
+      color: biome.mossHex,
+      roughness: 0.68,
+    });
+    const logMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.64, 2.6, 12), barkMat);
+    logMesh.rotation.z = Math.PI / 2;
+    logMesh.position.y = 0.56;
+    logMesh.castShadow = true;
+    logMesh.receiveShadow = true;
+    root.add(logMesh);
+
+    const mossStrip = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.18, 0.65), mossMat);
+    mossStrip.position.y = 1.08;
+    root.add(mossStrip);
+  } else if (obstacle.type === 'crystal_spire') {
+    const crysHex = biome.crystalPalette[0] ?? 0x48cae4;
+    const crysMat = new THREE.MeshStandardMaterial({
+      color: crysHex,
+      emissive: crysHex,
+      emissiveIntensity: 0.55,
+      roughness: 0.18,
+      metalness: 0.3,
+    });
+    const baseMat = new THREE.MeshStandardMaterial({
+      color: biome.cliffHex,
+      roughness: 0.8,
+    });
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 1.05, 0.35, 8), baseMat);
+    base.position.y = 0.18;
+    root.add(base);
+
+    const mainSpire = new THREE.Mesh(new THREE.OctahedronGeometry(0.68, 0), crysMat);
+    mainSpire.scale.set(0.8, 2.2, 0.8);
+    mainSpire.position.y = 1.35;
+    mainSpire.castShadow = true;
+    root.add(mainSpire);
+
+    const sideSpire = new THREE.Mesh(new THREE.OctahedronGeometry(0.42, 0), crysMat);
+    sideSpire.scale.set(0.75, 1.75, 0.75);
+    sideSpire.position.set(0.48, 0.85, 0.25);
+    sideSpire.rotation.z = -0.32;
+    root.add(sideSpire);
+  } else {
+    // ruin_pillar
+    const stoneMat = new THREE.MeshStandardMaterial({
+      color: 0xadb5bd,
+      roughness: 0.76,
+      metalness: 0.08,
+    });
+    const runeMat = new THREE.MeshStandardMaterial({
+      color: biome.fireflyPrimaryHex,
+      emissive: biome.fireflyPrimaryHex,
+      emissiveIntensity: 0.8,
+    });
+    const plinth = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.36, 1.4), stoneMat);
+    plinth.position.y = 0.18;
+    root.add(plinth);
+
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.54, 2.1, 8), stoneMat);
+    col.position.y = 1.25;
+    col.castShadow = true;
+    root.add(col);
+
+    const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.28, 0), runeMat);
+    orb.position.y = 2.55;
+    root.add(orb);
+  }
+
+  const shadow = createContactShadow(obstacle.radius);
+  root.add(shadow);
+  root.scale.set(s, s, s);
+  root.rotation.y = obstacle.rotationY;
+
+  return root;
 }
 

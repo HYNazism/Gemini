@@ -26,6 +26,7 @@ import {
   createAuroraSpireCenterpiece,
   createStarlightMeteorModel,
   createBoostPadModel,
+  createStageObstacleModel,
   type HeroRig,
   type HomeBaseRig,
 } from './models';
@@ -66,6 +67,7 @@ import {
   claimDailyQuestReward,
   getGraphicsQualityProfile,
   computeResponsiveHudProfile,
+  resolveStageObstacleCollisions,
   distance,
   DEFAULT_CUSTOMIZATION,
   DEFAULT_HOME_BASE,
@@ -658,11 +660,17 @@ export class GameEngine {
   }
 
   /**
-   * Completely transforms the 3D centerpiece, obstacles, and interactive mission props
-   * for each stage's unique mission mode (`rescue_escort`, `harmonic_bells`, `heart_tree_defense`, `meteor_rush`, `boss_duel`).
+   * Completely transforms the 3D centerpiece, terrain trails, pond, archways, obstacles,
+   * and interactive mission props for each chapter's unique procedural layout and mission mode.
    */
   private rebuildStageMissionLayout(): void {
     this.missionState = createInitialMissionState(this.currentChapterNumber);
+    const biome = getStageBiomeTheme(this.currentChapterNumber);
+    const layout = this.missionState.mapLayout;
+
+    // Apply biome theme AND procedural chapter map layout (trail pattern, shifted pond, shifted archways)
+    this.environmentRig?.applyBiomeTheme(biome, layout);
+    this.bossRig?.applyBiomeTheme(biome);
 
     if (this.stagePropsGroup) {
       while (this.stagePropsGroup.children.length > 0) {
@@ -679,24 +687,49 @@ export class GameEngine {
     const mode = this.missionState.mode;
     const isBossStage = mode === 'boss_duel';
 
-    // Show Boss & Shrines ONLY in Stage 5 (boss_duel) so Stages 1-4 have completely fresh centerpieces & layouts!
+    // Show Boss & Shrines ONLY in Boss Duel stages so other stages have completely fresh centerpieces & layouts!
     if (this.bossRig) {
       this.bossRig.root.visible = isBossStage;
       this.bossRig.shieldRing.visible = isBossStage;
+      this.bossRig.root.scale.setScalar(layout.centerpieceScale);
     }
+
+    // Reposition the 4 Shrines / Resonance Pillars to the chapter's procedural coordinates
     this.shrineRigs.forEach((rig, idx) => {
+      const sc = layout.shrineCoords[idx];
+      if (sc && this.shrines[idx]) {
+        this.shrines[idx].x = sc.x;
+        this.shrines[idx].z = sc.z;
+        const sy = getGroundHeight(sc.x, sc.z);
+        rig.root.position.set(sc.x, sy, sc.z);
+
+        const distToCenter = Math.hypot(sc.x, sc.z);
+        rig.beamMesh.scale.set(1, 1, distToCenter);
+        rig.beamMesh.rotation.y = Math.atan2(-sc.x, -sc.z);
+        rig.beamMesh.position.set(-sc.x * 0.5, 2.1, -sc.z * 0.5);
+      }
       rig.root.visible = isBossStage;
       rig.beamMesh.visible = false;
       if (this.shrines[idx]) {
         this.shrines[idx].isRestored = !isBossStage;
         this.shrines[idx].currentSeeds = 0;
-        this.shrines[idx].requiredSeeds = isBossStage ? 1 : 1;
+        this.shrines[idx].requiredSeeds = 1;
       }
     });
 
-    // Build Boost Pads (Sakura Wind Streams in Stage 2, Aurora Ice Pads in Stage 4)
+    // Spawn procedural mid-field 3D collidable obstacles for this chapter
+    if (this.stagePropsGroup) {
+      for (const obs of layout.obstacles) {
+        const obsGroup = createStageObstacleModel(obs, biome);
+        const oy = getGroundHeight(obs.x, obs.z);
+        obsGroup.position.set(obs.x, oy, obs.z);
+        this.stagePropsGroup.add(obsGroup);
+      }
+    }
+
+    // Build Boost Pads (Sakura Wind Streams / Aurora Speed Pads)
     for (const pad of this.missionState.boostPads) {
-      const padRig = createBoostPadModel(mode === 'meteor_rush');
+      const padRig = createBoostPadModel(mode === 'meteor_rush' || mode === 'boss_duel');
       const py = getGroundHeight(pad.x, pad.z);
       padRig.root.position.set(pad.x, py, pad.z);
       this.stagePropsGroup.add(padRig.root);
@@ -704,7 +737,7 @@ export class GameEngine {
     }
 
     if (mode === 'rescue_escort') {
-      // Stage 1: 3 Thorny Bramble Cages + Lost Baby Sproutlings + Safe Sanctuary Beacon Ring at (0, 0) & (0, 13.5)
+      // Thorny Bramble Cages + Lost Baby Sproutlings + Safe Sanctuary Gazebo
       for (const sp of this.missionState.lostSprouts) {
         const rig = createLostSproutAndCageModel();
         const y = getGroundHeight(sp.x, sp.z);
@@ -714,15 +747,18 @@ export class GameEngine {
         this.stagePropsGroup.add(rig.cageRoot);
         this.sproutRigs.push(rig);
       }
-      // Cozy Floral Sanctuary Gazebo at (0, 0)
       const pav = createSakuraPavilionCenterpiece();
       pav.root.position.set(0, getGroundHeight(0, 0), 0);
+      pav.root.scale.setScalar(layout.centerpieceScale);
+      pav.root.rotation.y = layout.terrainWavePhaseX;
       this.stagePropsGroup.add(pav.root);
       this.centerpieceRig = { root: pav.root, rotatingPart: pav.crystalCore };
     } else if (mode === 'harmonic_bells') {
-      // Stage 2: Grand Sakura Pavilion at (0, 0) + 4 Ancient Chime Bells with Crystal Light Bridges
+      // Grand Sakura Pavilion at (0, 0) + Shifted Ancient Chime Bells with Crystal Light Bridges
       const pav = createSakuraPavilionCenterpiece();
       pav.root.position.set(0, getGroundHeight(0, 0), 0);
+      pav.root.scale.setScalar(layout.centerpieceScale);
+      pav.root.rotation.y = layout.terrainWavePhaseX;
       this.stagePropsGroup.add(pav.root);
       this.centerpieceRig = { root: pav.root, rotatingPart: pav.crystalCore };
 
@@ -736,9 +772,11 @@ export class GameEngine {
         this.bellRigs.push(bRig);
       }
     } else if (mode === 'heart_tree_defense') {
-      // Stage 3: Colossal Ancient Amber Heart-Tree at (0, 0) + 3 Golden Pulse Totems
+      // Colossal Ancient Amber Heart-Tree at (0, 0) + Shifted Golden Pulse Totems
       const tree = createHeartTreeCenterpiece();
       tree.root.position.set(0, getGroundHeight(0, 0), 0);
+      tree.root.scale.setScalar(layout.centerpieceScale);
+      tree.root.rotation.y = layout.terrainWavePhaseX;
       this.stagePropsGroup.add(tree.root);
       this.centerpieceRig = { root: tree.root, rotatingPart: tree.heartCore };
 
@@ -750,9 +788,11 @@ export class GameEngine {
         this.totemRigs.push(tRig);
       }
     } else if (mode === 'meteor_rush') {
-      // Stage 4: Aurora Prism Spire at (0, 0) + Falling Starlight Meteors
+      // Aurora Prism Spire at (0, 0) + Falling Starlight Meteors
       const spire = createAuroraSpireCenterpiece();
       spire.root.position.set(0, getGroundHeight(0, 0), 0);
+      spire.root.scale.setScalar(layout.centerpieceScale);
+      spire.root.rotation.y = layout.terrainWavePhaseX;
       this.stagePropsGroup.add(spire.root);
       this.centerpieceRig = { root: spire.root, rotatingPart: spire.spireMesh };
 
@@ -1197,16 +1237,15 @@ export class GameEngine {
     // Stage 3 (Heart-Tree Defense): Count towards wave defense objective!
     if (this.missionState.mode === 'heart_tree_defense') {
       this.missionState.currentCount++;
-      if (this.missionState.currentCount === 3) {
-        this.missionState.currentWave = 2;
-        this.triggerStoryBeat('shrine_1');
-        this.spawnEnemies(3);
-      } else if (this.missionState.currentCount === 6) {
-        this.missionState.currentWave = 3;
-        this.triggerStoryBeat('shrine_2');
-        this.spawnEnemies(3);
-      } else if (this.missionState.currentCount >= this.missionState.targetCount) {
+      if (this.missionState.currentCount >= this.missionState.targetCount) {
         this.completeStageMission();
+      } else if (this.missionState.currentCount % 3 === 0) {
+        this.missionState.currentWave = Math.min(
+          this.missionState.totalWaves,
+          Math.floor(this.missionState.currentCount / 3) + 1
+        );
+        this.triggerStoryBeat(this.missionState.currentWave === 2 ? 'shrine_1' : 'shrine_2');
+        this.spawnEnemies(3);
       }
     }
   }
@@ -1879,6 +1918,16 @@ export class GameEngine {
       this.playerPos.z *= pushFactor;
     }
 
+    // Smooth circle-to-circle sliding collision against procedural chapter obstacles
+    const obsRes = resolveStageObstacleCollisions(
+      this.playerPos.x,
+      this.playerPos.z,
+      0.55,
+      this.missionState.mapLayout.obstacles
+    );
+    this.playerPos.x = obsRes.x;
+    this.playerPos.z = obsRes.z;
+
     this.playerPos.y = getGroundHeight(this.playerPos.x, this.playerPos.z);
     this.updateHeroTransform();
   }
@@ -2116,6 +2165,16 @@ export class GameEngine {
           this.spawnSparkProjectile(e.x, getGroundHeight(e.x, e.z) + floatY, e.z, dx, dz);
         }
       }
+
+      // Resolve enemy collisions against procedural mid-field obstacles
+      const enemyObsRes = resolveStageObstacleCollisions(
+        e.x,
+        e.z,
+        0.5,
+        this.missionState.mapLayout.obstacles
+      );
+      e.x = enemyObsRes.x;
+      e.z = enemyObsRes.z;
     }
 
     const activeEnemies = this.enemies.filter((item) => item.state.state !== 'cleansed').length;

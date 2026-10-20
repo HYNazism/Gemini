@@ -1197,6 +1197,45 @@ export type StageMissionMode =
   | 'meteor_rush'
   | 'boss_duel';
 
+export type StageTrailPattern =
+  | 'radial_cross'
+  | 'spiral_glade'
+  | 'twin_crescent'
+  | 'star_pentagram'
+  | 'serpentine_valley';
+
+export type StageObstacleType =
+  | 'moss_boulder'
+  | 'hollow_log'
+  | 'crystal_spire'
+  | 'ruin_pillar';
+
+export interface StageObstacle {
+  id: string;
+  type: StageObstacleType;
+  x: number;
+  z: number;
+  radius: number;
+  rotationY: number;
+  scale: number;
+}
+
+export interface StageMapLayout {
+  chapterNumber: number;
+  seed: number;
+  trailPattern: StageTrailPattern;
+  terrainWavePhaseX: number;
+  terrainWavePhaseZ: number;
+  pondX: number;
+  pondZ: number;
+  pondRadius: number;
+  archCoords: { x: number; z: number; rotY: number }[];
+  shrineCoords: { id: number; name: string; x: number; z: number }[];
+  centerpieceScale: number;
+  centerpieceVariant: number;
+  obstacles: StageObstacle[];
+}
+
 export interface LostSproutItem {
   id: string;
   cageX: number;
@@ -1239,6 +1278,9 @@ export interface BoostPadItem {
 
 export interface StageMissionState {
   mode: StageMissionMode;
+  chapterNumber: number;
+  tierLevel: number;
+  mapLayout: StageMapLayout;
   missionTitleFa: string;
   missionTitleEn: string;
   missionBadgeFa: string;
@@ -1261,7 +1303,7 @@ export interface StageMissionState {
   totems: DefenseTotemItem[];
   // Mode 4: meteor_rush
   meteors: StarlightMeteorItem[];
-  // Shared boost pads (wind streams in Stage 2, aurora pads in Stage 4)
+  // Shared boost pads (wind streams in Stage 2, aurora pads in Stage 4, etc.)
   boostPads: BoostPadItem[];
   speedBoostRemaining: number;
   // Mode 5: boss_duel
@@ -1280,61 +1322,261 @@ export function getStageMissionMode(chapterNumber: number): StageMissionMode {
   return modes[(lvl - 1) % modes.length];
 }
 
+/**
+ * Deterministic seeded PRNG (Mulberry32) so every chapter N generates a reproducible,
+ * genuinely distinct 3D map layout, obstacle formation, and objective coordinate set.
+ */
+function createSeededPrng(seedInput: number): () => number {
+  let a = (seedInput * 7919 + 0x9e3779b9) >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Procedurally shifts the 3D map layout, pond coordinates, trail topology,
+ * mid-field collidable 3D obstacles, and shrine/pillar coordinates for every chapter.
+ */
+export function generateStageMapLayout(chapterNumber: number): StageMapLayout {
+  const lvl = Math.max(1, Math.floor(chapterNumber));
+  const rand = createSeededPrng(lvl);
+
+  const patterns: StageTrailPattern[] = [
+    'radial_cross',
+    'spiral_glade',
+    'twin_crescent',
+    'star_pentagram',
+    'serpentine_valley',
+  ];
+  const trailPattern = patterns[(lvl - 1) % patterns.length];
+
+  const terrainWavePhaseX = (lvl - 1) * 1.15;
+  const terrainWavePhaseZ = (lvl - 1) * 0.85;
+
+  // Shift Reflective Crystal Pond around the meadow while avoiding (0,0) and Home Base (0,14)
+  const pondAngles = [0.18, -0.75, 2.35, -2.15, 0.92, -1.45, 2.8];
+  const pAng = pondAngles[(lvl - 1) % pondAngles.length] + (rand() - 0.5) * 0.25;
+  const pDist = 11.0 + (lvl % 3) * 2.2;
+  const pondX = Math.round(Math.cos(pAng) * pDist * 10) / 10;
+  let pondZ = Math.round(Math.sin(pAng) * pDist * 10) / 10;
+  if (distance(pondX, pondZ, GAME_CONSTANTS.HOME_BASE_X, GAME_CONSTANTS.HOME_BASE_Z) < 8.5) {
+    pondZ = -Math.abs(pondZ) - 6;
+  }
+  const pondRadius = 3.5 + (lvl % 3) * 0.45;
+
+  // Rotate and shift the 4 Shrine / Resonance Pillar coordinates per chapter
+  const baseRot = ((lvl - 1) * 0.42) % (Math.PI * 2);
+  const shrineNames = [
+    'Sun Blossom Shrine',
+    'Amber Meadow Shrine',
+    'Whispering Willow Shrine',
+    'Golden Canopy Shrine',
+  ];
+  const shrineCoords = [0, 1, 2, 3].map((idx) => {
+    const a = baseRot + Math.PI * 0.25 + idx * (Math.PI * 0.5) + (rand() - 0.5) * 0.22;
+    const r = 17.5 + (idx % 2) * 2.5 + (rand() - 0.5) * 2.0;
+    let sx = Math.round(Math.cos(a) * r * 10) / 10;
+    const sz = Math.round(Math.sin(a) * r * 10) / 10;
+    if (distance(sx, sz, GAME_CONSTANTS.HOME_BASE_X, GAME_CONSTANTS.HOME_BASE_Z) < 8.0) {
+      sx += sx >= 0 ? 6.5 : -6.5;
+    }
+    return {
+      id: idx + 1,
+      name: shrineNames[idx],
+      x: sx,
+      z: sz,
+    };
+  });
+
+  // Position the 4 carved stone archways midway toward the shifted shrines
+  const archCoords = shrineCoords.map((s) => {
+    const ax = Math.round(s.x * 0.58 * 10) / 10;
+    const az = Math.round(s.z * 0.58 * 10) / 10;
+    return {
+      x: ax,
+      z: az,
+      rotY: Math.atan2(s.x, s.z),
+    };
+  });
+
+  // Generate 8..12 procedural mid-field 3D obstacles that never block (0,0), Home Base, Pond, or Shrines
+  const obstacleTypes: StageObstacleType[] = [
+    'moss_boulder',
+    'hollow_log',
+    'crystal_spire',
+    'ruin_pillar',
+  ];
+  const obstacleCount = 8 + (lvl % 5);
+  const obstacles: StageObstacle[] = [];
+
+  for (let i = 0; i < obstacleCount; i++) {
+    const type = obstacleTypes[(i + lvl) % obstacleTypes.length];
+    const ringAngle =
+      baseRot * 1.3 + (i / obstacleCount) * Math.PI * 2 + (rand() - 0.5) * 0.35;
+    const ringRad = 7.5 + ((i * 3.7 + lvl * 2.1) % 19.5);
+    let ox = Math.cos(ringAngle) * ringRad;
+    let oz = Math.sin(ringAngle) * ringRad;
+
+    // Keep clear of Home Base Sanctuary (0, 14) and Player Spawn (0, 11)
+    if (distance(ox, oz, 0, 13.5) < 7.5) {
+      ox += ox >= 0 ? 7.5 : -7.5;
+    }
+    // Keep clear of Centerpiece (0, 0)
+    if (Math.hypot(ox, oz) < 5.8) {
+      const push = 6.2 / Math.max(0.5, Math.hypot(ox, oz));
+      ox *= push;
+      oz *= push;
+    }
+    // Keep clear of Pond
+    if (distance(ox, oz, pondX, pondZ) < pondRadius + 2.2) {
+      ox -= 4.5;
+      oz -= 4.5;
+    }
+
+    const scale = 0.85 + rand() * 0.45;
+    const baseRadius =
+      type === 'hollow_log' ? 1.35 : type === 'moss_boulder' ? 1.25 : 1.05;
+
+    obstacles.push({
+      id: `obs_${lvl}_${i}`,
+      type,
+      x: Math.round(ox * 10) / 10,
+      z: Math.round(oz * 10) / 10,
+      radius: Math.round(baseRadius * scale * 100) / 100,
+      rotationY: Math.round(rand() * Math.PI * 2 * 100) / 100,
+      scale: Math.round(scale * 100) / 100,
+    });
+  }
+
+  return {
+    chapterNumber: lvl,
+    seed: lvl * 7919,
+    trailPattern,
+    terrainWavePhaseX,
+    terrainWavePhaseZ,
+    pondX,
+    pondZ,
+    pondRadius,
+    archCoords,
+    shrineCoords,
+    centerpieceScale: 1.0 + ((lvl - 1) % 4) * 0.08,
+    centerpieceVariant: (lvl - 1) % 5,
+    obstacles,
+  };
+}
+
 export function createInitialMissionState(chapterNumber: number): StageMissionState {
-  const mode = getStageMissionMode(chapterNumber);
+  const lvl = Math.max(1, Math.floor(chapterNumber));
+  const tierLevel = Math.floor((lvl - 1) / 5);
+  const mode = getStageMissionMode(lvl);
+  const mapLayout = generateStageMapLayout(lvl);
+  const rand = createSeededPrng(lvl * 31 + 7);
+  const rotOffset = ((lvl - 1) * 0.55) % (Math.PI * 2);
 
-  const lostSprouts: LostSproutItem[] = [
-    { id: 'sprout-1', cageX: -22, cageZ: -16, x: -22, z: -16, state: 'caged' },
-    { id: 'sprout-2', cageX: 22, cageZ: -16, x: 22, z: -16, state: 'caged' },
-    { id: 'sprout-3', cageX: 0, cageZ: -26, x: 0, z: -26, state: 'caged' },
-  ];
+  // Procedurally shift Lost Sprout Cages & scale count with tier (3 -> 4 -> 5)
+  const sproutCount = Math.min(5, 3 + tierLevel);
+  const lostSprouts: LostSproutItem[] = Array.from({ length: sproutCount }, (_, idx) => {
+    const ang = rotOffset + (idx / sproutCount) * Math.PI * 2 + Math.PI * 0.65;
+    const rad = 18.5 + (idx % 2) * 4.5 + (rand() - 0.5) * 2.5;
+    const cx = Math.round(Math.cos(ang) * rad * 10) / 10;
+    let cz = Math.round(Math.sin(ang) * rad * 10) / 10;
+    if (distance(cx, cz, 0, 13.5) < 9.5) {
+      cz = -Math.abs(cz) - 10;
+    }
+    return {
+      id: `sprout-${lvl}-${idx + 1}`,
+      cageX: cx,
+      cageZ: cz,
+      x: cx,
+      z: cz,
+      state: 'caged',
+    };
+  });
 
-  const bells: HarmonicBellItem[] = [
-    { id: 'bell-1', index: 1, x: -21, z: -19, isRung: false },
-    { id: 'bell-2', index: 2, x: 21, z: -19, isRung: false },
-    { id: 'bell-3', index: 3, x: 21, z: 17, isRung: false },
-    { id: 'bell-4', index: 4, x: -21, z: 17, isRung: false },
-  ];
+  // Procedurally shift Harmonic Bell Towers & scale count with tier (4 -> 5 -> 6)
+  const bellCount = Math.min(6, 4 + Math.min(2, tierLevel));
+  const bells: HarmonicBellItem[] = Array.from({ length: bellCount }, (_, idx) => {
+    const ang = rotOffset + Math.PI * 0.25 + (idx / bellCount) * Math.PI * 2;
+    const rad = 19.5 + (idx % 2) * 3.0;
+    let bx = Math.round(Math.cos(ang) * rad * 10) / 10;
+    const bz = Math.round(Math.sin(ang) * rad * 10) / 10;
+    if (distance(bx, bz, 0, 13.5) < 8.5) {
+      bx += bx >= 0 ? 7 : -7;
+    }
+    return {
+      id: `bell-${lvl}-${idx + 1}`,
+      index: idx + 1,
+      x: bx,
+      z: bz,
+      isRung: false,
+    };
+  });
 
-  const totems: DefenseTotemItem[] = [
-    { id: 'totem-1', x: -8.5, z: -6.5, cooldown: 0 },
-    { id: 'totem-2', x: 8.5, z: -6.5, cooldown: 0 },
-    { id: 'totem-3', x: 0, z: 9.5, cooldown: 0 },
-  ];
+  // Procedurally shift Heart-Tree Defense Totems around center (3 -> 4)
+  const totemCount = Math.min(4, 3 + Math.min(1, tierLevel));
+  const totems: DefenseTotemItem[] = Array.from({ length: totemCount }, (_, idx) => {
+    const ang = rotOffset + (idx / totemCount) * Math.PI * 2 - Math.PI / 2;
+    const rad = 8.8 + (idx % 2) * 1.4;
+    return {
+      id: `totem-${lvl}-${idx + 1}`,
+      x: Math.round(Math.cos(ang) * rad * 10) / 10,
+      z: Math.round(Math.sin(ang) * rad * 10) / 10,
+      cooldown: 0,
+    };
+  });
 
-  const meteors: StarlightMeteorItem[] = [
-    { id: 'meteor-1', x: -18, z: -14, timeRemaining: 28, maxTime: 28, collected: false },
-    { id: 'meteor-2', x: 19, z: -12, timeRemaining: 25, maxTime: 28, collected: false },
-    { id: 'meteor-3', x: 0, z: -24, timeRemaining: 22, maxTime: 28, collected: false },
-  ];
+  // Procedurally shift Falling Starlight Meteors
+  const meteors: StarlightMeteorItem[] = [0, 1, 2].map((idx) => {
+    const ang = rotOffset + idx * ((Math.PI * 2) / 3) + 0.4;
+    const rad = 15 + idx * 3.5;
+    const mx = Math.round(Math.cos(ang) * rad * 10) / 10;
+    let mz = Math.round(Math.sin(ang) * rad * 10) / 10;
+    if (distance(mx, mz, 0, 13.5) < 7.5) {
+      mz = -Math.abs(mz) - 8;
+    }
+    return {
+      id: `meteor-${lvl}-${idx + 1}`,
+      x: mx,
+      z: mz,
+      timeRemaining: 28 - idx * 2,
+      maxTime: 28,
+      collected: false,
+    };
+  });
 
-  const boostPads: BoostPadItem[] =
-    mode === 'harmonic_bells'
-      ? [
-          { id: 'wind-1', x: -11, z: -9, angleRad: -Math.PI / 4 },
-          { id: 'wind-2', x: 11, z: -9, angleRad: Math.PI / 4 },
-          { id: 'wind-3', x: 11, z: 9, angleRad: (3 * Math.PI) / 4 },
-          { id: 'wind-4', x: -11, z: 9, angleRad: (-3 * Math.PI) / 4 },
-        ]
-      : mode === 'meteor_rush'
-      ? [
-          { id: 'aurora-1', x: -10, z: 0, angleRad: -Math.PI / 2 },
-          { id: 'aurora-2', x: 10, z: 0, angleRad: Math.PI / 2 },
-          { id: 'aurora-3', x: 0, z: -10, angleRad: Math.PI },
-          { id: 'aurora-4', x: 0, z: 10, angleRad: 0 },
-        ]
-      : [];
+  // Procedurally place Speed Boost Pads / Wind Streams for every stage mode
+  const padCount = mode === 'harmonic_bells' || mode === 'meteor_rush' ? 4 : 3;
+  const boostPads: BoostPadItem[] = Array.from({ length: padCount }, (_, idx) => {
+    const ang = rotOffset + idx * ((Math.PI * 2) / padCount);
+    const rad = 10.5 + (idx % 2) * 2.0;
+    return {
+      id: `pad-${lvl}-${idx + 1}`,
+      x: Math.round(Math.cos(ang) * rad * 10) / 10,
+      z: Math.round(Math.sin(ang) * rad * 10) / 10,
+      angleRad: ang + Math.PI / 2,
+    };
+  });
+
+  const waveCount = 3 + Math.min(2, tierLevel);
+  const waveTargetCritters = waveCount * 3;
+  const meteorTargetCount = Math.min(10, 6 + tierLevel * 2);
 
   switch (mode) {
     case 'rescue_escort':
       return {
         mode,
-        missionTitleFa: 'نجات و هدایت ۳ جوانه گمشده به کلبه امن',
-        missionTitleEn: 'Rescue & Escort 3 Lost Sproutlings to the Safe Cottage',
+        chapterNumber: lvl,
+        tierLevel,
+        mapLayout,
+        missionTitleFa: `نجات و هدایت ${sproutCount} جوانه گمشده به کلبه امن`,
+        missionTitleEn: `Rescue & Escort ${sproutCount} Lost Sproutlings to the Safe Cottage`,
         missionBadgeFa: 'ماموریت نجات و اسکورت',
         missionBadgeEn: 'Rescue & Escort Mission',
         currentCount: 0,
-        targetCount: 3,
+        targetCount: sproutCount,
         lostSprouts,
         followingCount: 0,
         safeZoneX: 0,
@@ -1347,19 +1589,22 @@ export function createInitialMissionState(chapterNumber: number): StageMissionSt
         totalWaves: 3,
         totems: [],
         meteors: [],
-        boostPads: [],
+        boostPads,
         speedBoostRemaining: 0,
         bossStunRemaining: 0,
       };
     case 'harmonic_bells':
       return {
         mode,
-        missionTitleFa: 'گذر از تندباد ساکورا و نواختن ۴ زنگوله باستانی',
-        missionTitleEn: 'Ride Wind Streams & Ring 4 Ancient Harmonic Bells',
+        chapterNumber: lvl,
+        tierLevel,
+        mapLayout,
+        missionTitleFa: `گذر از تندباد ساکورا و نواختن ${bellCount} زنگوله باستانی`,
+        missionTitleEn: `Ride Wind Streams & Ring ${bellCount} Ancient Harmonic Bells`,
         missionBadgeFa: 'پازل زنگوله‌ها و پل نوری',
         missionBadgeEn: 'Harmonic Bells & Wind Puzzle',
         currentCount: 0,
-        targetCount: 4,
+        targetCount: bellCount,
         lostSprouts: [],
         followingCount: 0,
         safeZoneX: 0,
@@ -1379,12 +1624,15 @@ export function createInitialMissionState(chapterNumber: number): StageMissionSt
     case 'heart_tree_defense':
       return {
         mode,
-        missionTitleFa: 'دفاع از درخت قلب کهربایی در برابر ۳ موج مهاجمان',
-        missionTitleEn: 'Defend the Amber Heart-Tree Against 3 Critter Waves',
+        chapterNumber: lvl,
+        tierLevel,
+        mapLayout,
+        missionTitleFa: `دفاع از درخت قلب کهربایی در برابر ${waveCount} موج مهاجمان`,
+        missionTitleEn: `Defend the Amber Heart-Tree Against ${waveCount} Critter Waves`,
         missionBadgeFa: 'دفاع از درخت قلب',
         missionBadgeEn: 'Heart-Tree Wave Defense',
         currentCount: 0,
-        targetCount: 9,
+        targetCount: waveTargetCritters,
         lostSprouts: [],
         followingCount: 0,
         safeZoneX: 0,
@@ -1394,22 +1642,25 @@ export function createInitialMissionState(chapterNumber: number): StageMissionSt
         heartTreeHp: 100,
         heartTreeMaxHp: 100,
         currentWave: 1,
-        totalWaves: 3,
+        totalWaves: waveCount,
         totems,
         meteors: [],
-        boostPads: [],
+        boostPads,
         speedBoostRemaining: 0,
         bossStunRemaining: 0,
       };
     case 'meteor_rush':
       return {
         mode,
-        missionTitleFa: 'شکار ۶ شهاب‌سنگ ستاره‌ای پیش از خاموش شدن نورشان',
-        missionTitleEn: 'Catch 6 Falling Starlight Meteors Before They Fade',
+        chapterNumber: lvl,
+        tierLevel,
+        mapLayout,
+        missionTitleFa: `شکار ${meteorTargetCount} شهاب‌سنگ ستاره‌ای پیش از خاموش شدن نورشان`,
+        missionTitleEn: `Catch ${meteorTargetCount} Falling Starlight Meteors Before They Fade`,
         missionBadgeFa: 'شهاب‌باران شفق قطبی',
         missionBadgeEn: 'Starlight Meteor Rush',
         currentCount: 0,
-        targetCount: 6,
+        targetCount: meteorTargetCount,
         lostSprouts: [],
         followingCount: 0,
         safeZoneX: 0,
@@ -1429,6 +1680,9 @@ export function createInitialMissionState(chapterNumber: number): StageMissionSt
     case 'boss_duel':
       return {
         mode,
+        chapterNumber: lvl,
+        tierLevel,
+        mapLayout,
         missionTitleFa: 'نبرد مستقیم با غول نگهبان با کمک ستون‌های اخترتاب',
         missionTitleEn: 'Cleanse the Astral Bramble-King Using Starlight Pillars',
         missionBadgeFa: 'میدان نبرد غول نگهبان',
@@ -1447,7 +1701,7 @@ export function createInitialMissionState(chapterNumber: number): StageMissionSt
         totalWaves: 1,
         totems: [],
         meteors: [],
-        boostPads: [],
+        boostPads,
         speedBoostRemaining: 0,
         bossStunRemaining: 0,
       };
@@ -1553,6 +1807,35 @@ const CHAPTER_SPIRITS = [
 
 /**
  * Deterministically generates accessible, genuinely distinct chapters with unique biomes,
+/**
+ * Smooth circle-to-circle sliding collision resolution against procedural mid-field 3D stage obstacles.
+ */
+export function resolveStageObstacleCollisions(
+  x: number,
+  z: number,
+  entityRadius: number,
+  obstacles: readonly StageObstacle[]
+): { x: number; z: number } {
+  let nextX = x;
+  let nextZ = z;
+  for (let i = 0; i < obstacles.length; i++) {
+    const obs = obstacles[i];
+    const minDist = entityRadius + obs.radius;
+    const dx = nextX - obs.x;
+    const dz = nextZ - obs.z;
+    const distSq = dx * dx + dz * dz;
+    if (distSq < minDist * minDist && distSq > 0.0001) {
+      const d = Math.sqrt(distSq);
+      const overlap = minDist - d;
+      nextX += (dx / d) * overlap;
+      nextZ += (dz / d) * overlap;
+    }
+  }
+  return { x: nextX, z: nextZ };
+}
+
+/**
+ * Deterministically generates accessible, genuinely distinct chapters with unique biomes,
  * 3D map layouts, and non-repetitive gameplay missions for each stage.
  */
 export function generateChapterInfo(chapterNumber: number): ChapterStoryInfo {
@@ -1561,7 +1844,6 @@ export function generateChapterInfo(chapterNumber: number): ChapterStoryInfo {
   const mission = createInitialMissionState(lvl);
   const adj = CHAPTER_ADJECTIVES[(lvl - 1) % CHAPTER_ADJECTIVES.length];
   const place = CHAPTER_PLACES[(lvl - 1) % CHAPTER_PLACES.length];
-  const spirit = CHAPTER_SPIRITS[(lvl - 1) % CHAPTER_SPIRITS.length];
 
   const weathers: WeatherType[] = ['sunshine', 'petals', 'sunshine', 'snow', 'petals'];
   const phases: TimePhase[] = ['day', 'dawn', 'sunset', 'day', 'night'];
@@ -1569,17 +1851,17 @@ export function generateChapterInfo(chapterNumber: number): ChapterStoryInfo {
   const featuredWeather = weathers[(lvl - 1) % weathers.length];
   const featuredTimePhase = phases[(lvl - 1) % phases.length];
 
-  const seedsPerShrine = lvl <= 2 ? 1 : lvl <= 5 ? 2 : 3;
+  const seedsPerShrine = 1;
   const enemyCount = mission.mode === 'heart_tree_defense' ? 3 : Math.min(8, 4 + Math.floor(lvl * 0.6));
   const bossMaxHp = Math.min(18, 6 + Math.floor(lvl * 1.2));
   const enemySpeedScale = Math.min(1.08, 0.74 + (lvl - 1) * 0.04);
 
   const storyByMode: Record<StageMissionMode, string> = {
-    rescue_escort: `Chapter ${lvl} (${biome.nameEn}): Three baby Grove Sproutlings are trapped in thorny cages! Break their cages with your Acorn Wand and escort their hopping caravan safely back to your Sanctuary Cottage!`,
-    harmonic_bells: `Chapter ${lvl} (${biome.nameEn}): Ride the pink Sakura wind-streams across crystal bridges and ring all 4 Ancient Harmonic Chime Bells to awaken the Grand Sakura Pavilion at the center!`,
-    heart_tree_defense: `Chapter ${lvl} (${biome.nameEn}): Autumn rollers are marching toward the Ancient Amber Heart-Tree at the center! Strike the 3 Golden Pulse Totems and defend the Heart-Tree across 3 short waves!`,
-    meteor_rush: `Chapter ${lvl} (${biome.nameEn}): Glowing Starlight Meteors are falling across the Aurora Frostveil Basin! Dash across the icy speed-boost pads and catch 6 Starlight Meteors before their glow fades!`,
-    boss_duel: `Chapter ${lvl} (${biome.nameEn}): Enter the Celestial Resonance Arena! Strike the Astral Pillars to stun the Ancient Bramble-King, shatter his dark armor, and restore the Astral Oasis!`,
+    rescue_escort: `Chapter ${lvl} (${biome.nameEn}): ${mission.targetCount} baby Grove Sproutlings are trapped in thorny cages across a shifted ${mission.mapLayout.trailPattern.replace('_', ' ')} layout! Break their cages and escort their hopping caravan safely back to your Sanctuary Cottage!`,
+    harmonic_bells: `Chapter ${lvl} (${biome.nameEn}): Ride the pink Sakura wind-streams across crystal bridges and ring all ${mission.targetCount} Ancient Harmonic Chime Bells to awaken the Grand Sakura Pavilion at the center!`,
+    heart_tree_defense: `Chapter ${lvl} (${biome.nameEn}): Autumn rollers are marching toward the Ancient Amber Heart-Tree at the center! Strike the Golden Pulse Totems and defend the Heart-Tree across ${mission.totalWaves} short waves!`,
+    meteor_rush: `Chapter ${lvl} (${biome.nameEn}): Glowing Starlight Meteors are falling across the Aurora Frostveil Basin! Dash across the icy speed-boost pads and catch ${mission.targetCount} Starlight Meteors before their glow fades!`,
+    boss_duel: `Chapter ${lvl} (${biome.nameEn}): Enter the Celestial Resonance Arena! Strike the shifted Astral Pillars to stun the Ancient Bramble-King, shatter his dark armor, and restore the Astral Oasis!`,
   };
 
   return {
