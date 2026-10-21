@@ -124,6 +124,68 @@ class SoundSystem {
     osc.stop(ctx.currentTime + 0.23);
   }
 
+  // Runic Aegis Parry stance activation hum
+  public playParryStance(): void {
+    if (this.isMuted) return;
+    const ctx = this.initCtx();
+    if (!ctx) return;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(520, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(780, ctx.currentTime + 0.14);
+
+    gain.gain.setValueAtTime(0.16, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.16);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(ctx.currentTime + 0.17);
+  }
+
+  // Perfect Parry deflection clash + AoE shockwave resonance
+  public playParrySuccess(): void {
+    if (this.isMuted) return;
+    const ctx = this.initCtx();
+    if (!ctx) return;
+
+    // 1. Metallic crystalline ring (high harmonic chord)
+    [880, 1318.51, 1760].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      const t = ctx.currentTime + idx * 0.02;
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.06, t + 0.34);
+
+      gain.gain.setValueAtTime(0.2, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.36);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.38);
+    });
+
+    // 2. Sub-bass AoE shockwave thump
+    const subOsc = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    subOsc.type = 'triangle';
+    subOsc.frequency.setValueAtTime(160, ctx.currentTime);
+    subOsc.frequency.exponentialRampToValueAtTime(42, ctx.currentTime + 0.28);
+
+    subGain.gain.setValueAtTime(0.28, ctx.currentTime);
+    subGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+
+    subOsc.connect(subGain);
+    subGain.connect(ctx.destination);
+    subOsc.start();
+    subOsc.stop(ctx.currentTime + 0.32);
+  }
+
   // Pollen Whirlwind bloom
   public playPollenSpin(): void {
     if (this.isMuted) return;

@@ -19,6 +19,10 @@ interface TouchControlsProps {
   isNearShrine: boolean;
   dashCooldown: number;
   spinCooldown: number;
+  parryCooldown?: number;
+  parryActive?: boolean;
+  counterReady?: boolean;
+  staminaBuffActive?: boolean;
   lang: Language;
 }
 
@@ -27,6 +31,10 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
   isNearShrine,
   dashCooldown,
   spinCooldown,
+  parryCooldown = 0,
+  parryActive = false,
+  counterReady = false,
+  staminaBuffActive = false,
   lang,
 }) => {
   const isFa = lang === 'fa';
@@ -168,15 +176,15 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
         }}
         className={`relative pointer-events-auto rounded-full flex items-center justify-center transition-colors shadow-xl cursor-grab active:cursor-grabbing mb-1 ml-1 ${
           joystickActive
-            ? 'border-2 border-[#ffd166] bg-[#0f281e]/75 ring-4 ring-[#ffd166]/25'
-            : 'border-2 border-[#d8f3dc]/45 bg-[#1b4332]/45 hover:bg-[#1b4332]/65'
+            ? 'border-2 border-[#ffd166] bg-[#060d18]/85 ring-4 ring-[#ffd166]/25'
+            : 'border-2 border-[#38bdf8]/55 bg-[#060d18]/55 hover:bg-[#0b1520]/75'
         }`}
       >
         {/* Subtle cardinal direction ticks */}
-        <span className="absolute top-1.5 text-[9px] text-[#d8f3dc]/40 font-black pointer-events-none">▲</span>
-        <span className="absolute bottom-1.5 text-[9px] text-[#d8f3dc]/40 font-black pointer-events-none">▼</span>
-        <span className="absolute left-1.5 text-[9px] text-[#d8f3dc]/40 font-black pointer-events-none">◀</span>
-        <span className="absolute right-1.5 text-[9px] text-[#d8f3dc]/40 font-black pointer-events-none">▶</span>
+        <span className="absolute top-1.5 text-[9px] text-[#38bdf8]/50 font-black pointer-events-none">▲</span>
+        <span className="absolute bottom-1.5 text-[9px] text-[#38bdf8]/50 font-black pointer-events-none">▼</span>
+        <span className="absolute left-1.5 text-[9px] text-[#38bdf8]/50 font-black pointer-events-none">◀</span>
+        <span className="absolute right-1.5 text-[9px] text-[#38bdf8]/50 font-black pointer-events-none">▶</span>
 
         {/* Draggable Thumb Knob */}
         <div
@@ -188,8 +196,8 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
           }}
           className={`rounded-full pointer-events-none flex items-center justify-center shadow-lg border-2 ${
             joystickActive
-              ? 'bg-gradient-to-br from-[#ffd166] to-[#f4a261] border-white text-[#081c15]'
-              : 'bg-[#95d5b2]/85 border-[#e9f5db] text-[#081c15]'
+              ? 'bg-gradient-to-br from-[#ffd166] to-[#f59e0b] border-white text-[#060d18]'
+              : 'bg-[#1e293b]/90 border-[#38bdf8] text-[#f8fafc]'
           }`}
         >
           <span className="text-[10px] font-black tracking-tighter">
@@ -201,71 +209,121 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
       {/* Right Action Buttons Cluster (Bounded to bottom-right action container) */}
       <div
         className={`relative pointer-events-none ${
-          isCompact ? 'w-36 h-36' : 'w-44 h-44 sm:w-48 sm:h-48'
+          isCompact ? 'w-40 h-40' : 'w-48 h-48 sm:w-52 sm:h-52'
         }`}
       >
-        {/* Whack / Bonk (Large primary bottom-right) */}
+        {/* Astral Combo Strike / Empowered Riposte (Large primary bottom-right) */}
         <button
           type="button"
+          data-testid="touch-strike-btn"
           onPointerDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
             touchInputs.bonkPressed = true;
           }}
-          aria-label="Acorn Bonk"
+          aria-label="Astral Combo Strike"
           className={`pointer-events-auto absolute bottom-1 right-1 ${
             isCompact ? 'w-16 h-16 text-[10px]' : 'w-19 h-19 sm:w-20 sm:h-20 text-xs'
-          } rounded-full bg-gradient-to-br from-[#80b918] to-[#55a630] border-2 border-[#e9f5db] text-[#0d2818] font-black tracking-wider shadow-xl flex flex-col items-center justify-center active:scale-90 transition-transform cursor-pointer`}
+          } rounded-full border-2 font-black tracking-wider shadow-xl flex flex-col items-center justify-center active:scale-90 transition-transform cursor-pointer ${
+            counterReady
+              ? 'bg-gradient-to-br from-[#fde047] via-[#ffd166] to-[#38bdf8] border-white text-[#060d18] ring-4 ring-[#ffd166]/65 scale-105'
+              : 'bg-gradient-to-br from-[#ffd166] via-[#f59e0b] to-[#d97706] border-white text-[#081018]'
+          }`}
         >
-          <span className={isCompact ? 'text-base' : 'text-xl'}>🌰</span>
-          <span>{isFa ? 'ضربه' : 'BONK'}</span>
+          <span className={isCompact ? 'text-base' : 'text-xl'}>⚔️</span>
+          <span>
+            {counterReady
+              ? isFa
+                ? 'پاتک!'
+                : 'RIPOSTE'
+              : isFa
+              ? 'حمله'
+              : 'STRIKE'}
+          </span>
         </button>
 
-        {/* Dandelion Dash (Bottom left of cluster) */}
+        {/* Dedicated Astral Aegis Parry Button (Middle-Left arc of cluster) */}
         <button
           type="button"
+          data-testid="touch-parry-btn"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (parryCooldown <= 0) touchInputs.parryPressed = true;
+          }}
+          disabled={parryCooldown > 0}
+          aria-label="Astral Aegis Parry"
+          className={`pointer-events-auto absolute bottom-14 left-0 sm:bottom-16 ${
+            isCompact ? 'w-12 h-12 text-[9px]' : 'w-14 h-14 text-[10px]'
+          } rounded-full border-2 font-black tracking-wider shadow-lg flex flex-col items-center justify-center active:scale-90 transition-transform cursor-pointer tabular-nums ${
+            parryActive
+              ? 'bg-gradient-to-br from-[#fde047] to-[#38bdf8] text-[#060d18] border-white ring-4 ring-[#38bdf8]/60 scale-105'
+              : parryCooldown > 0
+              ? 'bg-[#0b1520]/75 text-white/50 border-gray-500/40'
+              : 'bg-gradient-to-br from-[#0ea5e9] via-[#2563eb] to-[#1d4ed8] text-white border-[#ffd166]'
+          }`}
+        >
+          <span className={isCompact ? 'text-sm' : 'text-base'}>🛡️</span>
+          <span>
+            {parryCooldown > 0
+              ? parryCooldown.toFixed(1)
+              : isFa
+              ? 'دفع/پری'
+              : 'PARRY'}
+          </span>
+        </button>
+
+        {/* Tactical Evade Dash (Bottom left of cluster) */}
+        <button
+          type="button"
+          data-testid="touch-evade-btn"
           onPointerDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
             if (dashCooldown <= 0) touchInputs.dashPressed = true;
           }}
           disabled={dashCooldown > 0}
-          aria-label="Dandelion Dash"
-          className={`pointer-events-auto absolute bottom-2 left-2 ${
+          aria-label="Tactical Evade Dash"
+          className={`pointer-events-auto absolute bottom-1 left-6 sm:left-7 ${
             isCompact ? 'w-12 h-12 text-[9px]' : 'w-14 h-14 text-[10px]'
-          } rounded-full border-2 border-[#e9f5db] font-black tracking-wider shadow-lg flex flex-col items-center justify-center active:scale-90 transition-transform cursor-pointer ${
+          } rounded-full border-2 font-black tracking-wider shadow-lg flex flex-col items-center justify-center active:scale-90 transition-transform cursor-pointer tabular-nums ${
             dashCooldown > 0
-              ? 'bg-[#2d5029]/60 text-white/50 border-gray-400/40'
-              : 'bg-gradient-to-br from-[#48cae4] to-[#0096c7] text-[#03045e]'
+              ? 'bg-[#0b1520]/70 text-white/50 border-gray-500/40'
+              : staminaBuffActive
+              ? 'bg-gradient-to-br from-[#34d399] to-[#059669] text-[#060d18] border-white'
+              : 'bg-gradient-to-br from-[#38bdf8] to-[#0284c7] text-[#081018] border-[#e2e8f0]'
           }`}
         >
-          <span className={isCompact ? 'text-sm' : 'text-base'}>💨</span>
-          <span>{dashCooldown > 0 ? dashCooldown.toFixed(1) : isFa ? 'جهش' : 'DASH'}</span>
+          <span className={isCompact ? 'text-sm' : 'text-base'}>⚡</span>
+          <span>{dashCooldown > 0 ? dashCooldown.toFixed(1) : isFa ? 'جاخالی' : 'EVADE'}</span>
         </button>
 
-        {/* Pollen Bloom Spin (Top right of cluster) */}
+        {/* Supernova Cleave (Top right of cluster) */}
         <button
           type="button"
+          data-testid="touch-nova-btn"
           onPointerDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
             if (spinCooldown <= 0) touchInputs.spinPressed = true;
           }}
           disabled={spinCooldown > 0}
-          aria-label="Pollen Bloom Spin"
+          aria-label="Supernova Cleave"
           className={`pointer-events-auto absolute top-2 right-2 ${
             isCompact ? 'w-12 h-12 text-[9px]' : 'w-14 h-14 text-[10px]'
-          } rounded-full border-2 border-[#e9f5db] font-black tracking-wider shadow-lg flex flex-col items-center justify-center active:scale-90 transition-transform cursor-pointer ${
+          } rounded-full border-2 font-black tracking-wider shadow-lg flex flex-col items-center justify-center active:scale-90 transition-transform cursor-pointer tabular-nums ${
             spinCooldown > 0
-              ? 'bg-[#2d5029]/60 text-white/50 border-gray-400/40'
-              : 'bg-gradient-to-br from-[#ffb703] to-[#fb8500] text-[#370617]'
+              ? 'bg-[#0b1520]/70 text-white/50 border-gray-500/40'
+              : staminaBuffActive
+              ? 'bg-gradient-to-br from-[#a855f7] via-[#6366f1] to-[#34d399] text-white border-[#ffd166]'
+              : 'bg-gradient-to-br from-[#a855f7] to-[#6366f1] text-white border-[#e2e8f0]'
           }`}
         >
-          <span className={isCompact ? 'text-sm' : 'text-base'}>🌸</span>
-          <span>{spinCooldown > 0 ? spinCooldown.toFixed(1) : isFa ? 'چرخش' : 'BLOOM'}</span>
+          <span className={isCompact ? 'text-sm' : 'text-base'}>✦</span>
+          <span>{spinCooldown > 0 ? spinCooldown.toFixed(1) : isFa ? 'ابرنواختر' : 'NOVA'}</span>
         </button>
 
-        {/* Harvest / Deposit (Top left of cluster - glows if near shrine) */}
+        {/* Activate Obelisk / Relic (Top left of cluster - glows if near shrine) */}
         <button
           type="button"
           onPointerDown={(e) => {
@@ -273,17 +331,17 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
             e.stopPropagation();
             touchInputs.interactPressed = true;
           }}
-          aria-label="Harvest or Deposit Seeds"
-          className={`pointer-events-auto absolute top-1.5 left-4 ${
-            isCompact ? 'w-11 h-11 text-[8px]' : 'w-13 h-13 text-[9px]'
+          aria-label="Activate Astral Obelisk"
+          className={`pointer-events-auto absolute top-2 left-8 sm:left-10 ${
+            isCompact ? 'w-11 h-11 text-[8px]' : 'w-12 h-12 text-[9px]'
           } rounded-full border-2 font-black tracking-wider shadow-lg flex flex-col items-center justify-center active:scale-90 transition-all cursor-pointer ${
             isNearShrine
-              ? 'bg-[#ffd166] text-[#2b2d42] border-white ring-4 ring-[#ffd166]/50 scale-105 animate-pulse'
-              : 'bg-[#52b788] text-[#081c15] border-[#d8f3dc]'
+              ? 'bg-[#ffd166] text-[#081018] border-white ring-4 ring-[#ffd166]/50 scale-105'
+              : 'bg-[#10b981] text-[#081018] border-[#d1fae5]'
           }`}
         >
           <span className="text-xs">✨</span>
-          <span>{isFa ? 'احیا' : 'RESTORE'}</span>
+          <span>{isFa ? 'احیا' : 'ACTIVATE'}</span>
         </button>
       </div>
     </div>

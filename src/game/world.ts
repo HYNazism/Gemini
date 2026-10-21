@@ -445,8 +445,9 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
   // Perimeter Rocks
   const rockGeo = new THREE.DodecahedronGeometry(1.6, 1);
   const rockMat = new THREE.MeshStandardMaterial({
-    color: 0x687465,
-    roughness: 0.85,
+    color: 0x1e293b,
+    roughness: 0.55,
+    metalness: 0.45,
     bumpMap: bumpTex,
     bumpScale: 0.06,
   });
@@ -485,9 +486,9 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
   const stepStoneGeo = new THREE.CylinderGeometry(0.55, 0.68, 0.14, 8);
   stepStoneGeo.translate(0, 0.06, 0);
   const stepStoneMat = new THREE.MeshStandardMaterial({
-    color: 0x8d99ae,
-    roughness: 0.78,
-    metalness: 0.1,
+    color: 0x334155,
+    roughness: 0.48,
+    metalness: 0.55,
     bumpMap: bumpTex,
     bumpScale: 0.04,
   });
@@ -627,22 +628,23 @@ export function buildEnvironment(scene: THREE.Scene): EnvironmentDetailRig {
     }
   });
 
-  // 2. Four Ancient Carved Woodland Stone Archways framing routes to the 4 Shrines
+  // 2. Four Ancient Carved Obsidian-Gold Archways framing routes to the 4 Shrines
   const archStoneMat = new THREE.MeshStandardMaterial({
-    color: 0xadb5bd,
-    roughness: 0.76,
-    metalness: 0.08,
+    color: 0x1e293b,
+    roughness: 0.42,
+    metalness: 0.72,
     bumpMap: bumpTex,
     bumpScale: 0.06,
   });
   const archCrestMat = new THREE.MeshStandardMaterial({
-    color: 0x2b582a,
-    roughness: 0.65,
+    color: 0xf59e0b,
+    roughness: 0.28,
+    metalness: 0.85,
   });
   const lanternOrbMat = new THREE.MeshStandardMaterial({
-    color: 0xffe66d,
-    emissive: 0xff9f1c,
-    emissiveIntensity: 0.9,
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 1.25,
   });
 
   const archCoords = [
@@ -1094,16 +1096,16 @@ export interface LightingRig {
 }
 
 export function setupLighting(scene: THREE.Scene, isHeadless: boolean): LightingRig {
-  const fog = new THREE.FogExp2(0xa7d8ad, 0.015);
-  const skyColor = new THREE.Color(0x9bd0a3);
+  const fog = new THREE.FogExp2(0x1b2b40, 0.014);
+  const skyColor = new THREE.Color(0x162436);
   scene.fog = fog;
   scene.background = skyColor;
 
-  const hemiLight = new THREE.HemisphereLight(0xbde0fe, 0x3b6e2e, 0.98);
+  const hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x0f172a, 0.88);
   hemiLight.position.set(0, 50, 0);
   scene.add(hemiLight);
 
-  const keyLight = new THREE.DirectionalLight(0xfff1cf, 1.45);
+  const keyLight = new THREE.DirectionalLight(0xfef3c7, 1.55);
   keyLight.position.set(28, 42, 24);
   keyLight.castShadow = !isHeadless;
 

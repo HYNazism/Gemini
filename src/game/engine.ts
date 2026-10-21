@@ -72,6 +72,13 @@ import {
   resolveStageObstacleCollisions,
   createInitialSproutBuddy,
   computeSproutBuddyUpdate,
+  createInitialHeroMastery,
+  upgradeMasterySkill,
+  unlockOrEquipWeapon,
+  computeMasteryStats,
+  getEffectiveStaminaCost,
+  activateParryStance,
+  resolveParrySuccess,
   distance,
   DEFAULT_CUSTOMIZATION,
   DEFAULT_HOME_BASE,
@@ -93,11 +100,45 @@ import {
   type DailyQuestType,
   type StageMissionState,
   type SproutBuddyState,
+  type HeroMasteryState,
+  type WeaponType,
 } from './rules';
 import { sound } from './audio';
+import { HapticAndGamepadManager } from './haptics';
 
 export type GameState = 'title' | 'playing' | 'paused' | 'victory' | 'gameover';
 export type CameraFocusMode = 'gameplay' | 'customize-hero' | 'customize-home';
+
+export interface FloatingCombatText {
+  id: string;
+  text: string;
+  subtext?: string;
+  type: 'normal' | 'crit' | 'finisher' | 'dodge' | 'parry' | 'heal' | 'shard';
+  screenX: number;
+  screenY: number;
+  opacity: number;
+}
+
+export interface RadarTelemetry {
+  playerX: number;
+  playerZ: number;
+  playerFacing: number;
+  playerRotationY: number;
+  sanctuaryX: number;
+  sanctuaryZ: number;
+  enemies: {
+    x: number;
+    z: number;
+    type: 'puffer' | 'roller' | 'sprite';
+    kind: 'charger' | 'roller' | 'ranged';
+    isWindup: boolean;
+  }[];
+  pickups: { x: number; z: number }[];
+  shrines: { x: number; z: number; isRestored: boolean; restored: boolean }[];
+  boss: { x: number; z: number } | null;
+  targetX: number;
+  targetZ: number;
+}
 
 export interface HUDData {
   gameState: GameState;
@@ -131,6 +172,14 @@ export interface HUDData {
   dailyQuests: DailyQuest[];
   dailyQuestsDateKey: string;
   sproutBuddy?: SproutBuddyState;
+  heroMastery: HeroMasteryState;
+  bossPhase: 1 | 2;
+  floatingTexts?: FloatingCombatText[];
+  floatingCombatTexts?: FloatingCombatText[];
+  radar?: RadarTelemetry;
+  parryFlashIntensity?: number;
+  parryFlashType?: 'normal' | 'boss_shred' | 'riposte';
+  gamepadConnected?: boolean;
   finalSummary?: {
     finalScore: number;
     stars: number;
@@ -144,6 +193,7 @@ export interface TouchInputState {
   bonkPressed: boolean;
   dashPressed: boolean;
   spinPressed: boolean;
+  parryPressed: boolean;
   interactPressed: boolean;
 }
 
@@ -152,6 +202,7 @@ const HOME_STORAGE_KEY = 'sproutling_home_custom_v1';
 const CHAPTER_STORAGE_KEY = 'sproutling_chapter_num_v1';
 const DAILY_QUESTS_STORAGE_KEY = 'sproutling_daily_quests_v1';
 const QUALITY_STORAGE_KEY = 'sproutling_perf_quality_v1';
+const MASTERY_STORAGE_KEY = 'sproutling_hero_mastery_v1';
 
 export class GameEngine {
   public canvasContainer: HTMLElement;
@@ -166,9 +217,10 @@ export class GameEngine {
   private animFrameId: number | null = null;
   private clock = new THREE.Clock();
 
-  // Customization, Home Base, Infinite Chapter & Daily Quests State
+  // Customization, Home Base, Infinite Chapter, Mastery & Daily Quests State
   private characterCustom: CharacterCustomization = { ...DEFAULT_CUSTOMIZATION };
   private homeBaseCustom: HomeBaseCustomization = { ...DEFAULT_HOME_BASE };
+  private heroMastery: HeroMasteryState = createInitialHeroMastery();
   private homeBaseRig!: HomeBaseRig;
   private currentChapterNumber = 1;
   private performanceQuality: PerformanceQuality = 'high';
@@ -199,19 +251,53 @@ export class GameEngine {
   private attackAnimTimer = 0;
   private currentComboStep = 0;
   private spinAnimTimer = 0;
+  private parryShockwaveAnimTimer = 0;
   private walkCycle = 0;
   private damageTakenTotal = 0;
   private totalEnemiesCleansed = 0;
   private elapsedTime = 0;
 
-  // Hitstop & Camera Juice
+  // Hitstop, Screen-Flash, Camera Zoom Punch & Haptics
   private hitstopTimer = 0;
   private cameraTrauma = 0;
+  private cameraPunchTimer = 0;
+  private parryFlashIntensity = 0;
+  private parryFlashType: 'normal' | 'boss_shred' | 'riposte' = 'normal';
+  private haptics = new HapticAndGamepadManager();
+  private gamepadConnected = false;
+  private gamepadMoveX = 0;
+  private gamepadMoveY = 0;
   private cameraOffset = new THREE.Vector3(0, 9.5, 12.5);
   private titleTourAngle = 0;
 
-  // Particles
+  // Particles & 3D Parry Crystal Shockwave Pools
   private particles!: ParticlePool;
+  private crystalShards: {
+    mesh: THREE.Mesh;
+    mat: THREE.MeshStandardMaterial;
+    vx: number;
+    vy: number;
+    vz: number;
+    rotVelX: number;
+    rotVelY: number;
+    rotVelZ: number;
+    life: number;
+    maxLife: number;
+    baseScale: number;
+  }[] = [];
+  private energyPillars: {
+    mesh: THREE.Mesh;
+    mat: THREE.MeshBasicMaterial;
+    angle: number;
+    startRadius: number;
+    endRadius: number;
+    centerX: number;
+    centerY: number;
+    centerZ: number;
+    life: number;
+    maxLife: number;
+    targetHeight: number;
+  }[] = [];
 
   // Enemies
   private enemies: {
@@ -227,6 +313,8 @@ export class GameEngine {
   private bossHp = 8;
   private bossMaxHp = 8;
   private bossCleansed = false;
+  private bossPhase: 1 | 2 = 1;
+  private bossShockwaveTimer = 0;
   private currentStoryBeat: InGameStoryBeat | null = null;
   private storyHistory: InGameStoryBeat[] = [];
   private triggeredStoryEvents = new Set<StoryTriggerEvent>();
@@ -276,7 +364,22 @@ export class GameEngine {
     vy: number;
     vz: number;
     life: number;
+    isReflected?: boolean;
   }[] = [];
+
+  // 3D World-Space Floating Combat Numbers
+  private floatingTextItems: {
+    id: string;
+    x: number;
+    y: number;
+    z: number;
+    text: string;
+    subtext?: string;
+    type: 'normal' | 'crit' | 'finisher' | 'dodge' | 'parry' | 'heal' | 'shard';
+    age: number;
+    maxAge: number;
+  }[] = [];
+  private projVec = new THREE.Vector3();
 
   // Inputs
   private keysHeld = new Set<string>();
@@ -286,6 +389,7 @@ export class GameEngine {
     bonkPressed: false,
     dashPressed: false,
     spinPressed: false,
+    parryPressed: false,
     interactPressed: false,
   };
 
@@ -334,6 +438,15 @@ export class GameEngine {
           this.currentChapterNumber = parsed;
         }
       }
+      const savedMastery = window.localStorage.getItem(MASTERY_STORAGE_KEY);
+      if (savedMastery) {
+        const parsedMastery = JSON.parse(savedMastery);
+        this.heroMastery = {
+          ...createInitialHeroMastery(),
+          ...parsedMastery,
+        };
+      }
+      this.player = createInitialPlayer(this.heroMastery);
       const savedQuality = window.localStorage.getItem(QUALITY_STORAGE_KEY) as PerformanceQuality | null;
       if (
         savedQuality === 'eco' ||
@@ -469,6 +582,64 @@ export class GameEngine {
     this.dispatchHUD();
   }
 
+  private saveHeroMastery(): void {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(MASTERY_STORAGE_KEY, JSON.stringify(this.heroMastery));
+    } catch {
+      // ignore
+    }
+  }
+
+  public awardAstralShards(amount: number): void {
+    if (amount <= 0) return;
+    this.heroMastery = {
+      ...this.heroMastery,
+      astralShards: this.heroMastery.astralShards + Math.round(amount),
+    };
+    this.saveHeroMastery();
+  }
+
+  public upgradeHeroSkill(
+    skillKey: 'attackPowerLevel' | 'critChanceLevel' | 'staminaMaxLevel' | 'cooldownHasteLevel'
+  ): boolean {
+    const res = upgradeMasterySkill(this.heroMastery, skillKey);
+    if (!res.upgraded) return false;
+    this.heroMastery = res.mastery;
+    const stats = computeMasteryStats(this.heroMastery);
+    this.player.maxStamina = stats.maxStamina;
+    this.player.stamina = stats.maxStamina;
+    this.saveHeroMastery();
+    sound.playShrineRestored();
+    if (this.particles) {
+      this.particles.spawn(
+        this.playerPos.x,
+        this.playerPos.y + 1.3,
+        this.playerPos.z,
+        0.3,
+        0.95,
+        1.0,
+        24,
+        4.5
+      );
+    }
+    this.dispatchHUD();
+    return true;
+  }
+
+  public equipOrUnlockHeroWeapon(weaponId: WeaponType): boolean {
+    const res = unlockOrEquipWeapon(this.heroMastery, weaponId);
+    if (!res.success) return false;
+    this.heroMastery = res.mastery;
+    this.saveHeroMastery();
+    if (this.hero) {
+      this.hero.applyWeapon(this.heroMastery.equippedWeapon);
+    }
+    sound.playShrineRestored();
+    this.dispatchHUD();
+    return true;
+  }
+
   public setCameraFocusMode(mode: CameraFocusMode): void {
     this.cameraFocusMode = mode;
   }
@@ -589,9 +760,10 @@ export class GameEngine {
     this.environmentRig = buildEnvironment(this.scene);
     this.particles = createParticlePool(this.scene, 180);
     this.weatherSystem = createWeatherSystem(this.scene, 130);
+    this.initParryShockwavePools();
 
-    // Hero with saved customization
-    this.hero = createHeroModel(this.characterCustom);
+    // Hero with saved customization & equipped mythic weapon
+    this.hero = createHeroModel(this.characterCustom, this.heroMastery.equippedWeapon);
     this.scene.add(this.hero.root);
     this.updateHeroTransform();
 
@@ -902,6 +1074,8 @@ export class GameEngine {
           this.triggerPlayerDash();
         } else if (e.code === 'KeyQ' || e.code === 'KeyL') {
           this.triggerPlayerSpin();
+        } else if (e.code === 'KeyF') {
+          this.triggerPlayerParry();
         } else if (e.code === 'KeyE') {
           this.triggerPlayerInteract();
         } else if (e.code === 'Escape' || e.code === 'KeyP') {
@@ -913,6 +1087,13 @@ export class GameEngine {
         if (e.code === 'Escape' || e.code === 'KeyP') {
           this.togglePause();
         }
+      }
+    });
+
+    this.canvasContainer.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (this.gameState === 'playing' && this.cameraFocusMode === 'gameplay') {
+        this.triggerPlayerParry();
       }
     });
 
@@ -988,7 +1169,7 @@ export class GameEngine {
     this.environmentRig?.applyBiomeTheme(biome);
     this.bossRig?.applyBiomeTheme(biome);
 
-    this.player = createInitialPlayer();
+    this.player = createInitialPlayer(this.heroMastery);
     this.playerPos.set(0, getGroundHeight(0, 11), 11);
     this.damageTakenTotal = 0;
     this.totalEnemiesCleansed = 0;
@@ -996,6 +1177,7 @@ export class GameEngine {
     this.bossMaxHp = chapter.bossMaxHp;
     this.bossHp = chapter.bossMaxHp;
     this.bossCleansed = false;
+    this.bossPhase = 1;
 
     this.triggeredStoryEvents.clear();
     this.storyHistory = [];
@@ -1024,9 +1206,10 @@ export class GameEngine {
     document.body.dataset.state = 'title';
     this.touchInputs.moveX = 0;
     this.touchInputs.moveY = 0;
-    this.touchInputs.whackPressed = false;
+    this.touchInputs.bonkPressed = false;
     this.touchInputs.dashPressed = false;
     this.touchInputs.spinPressed = false;
+    this.touchInputs.parryPressed = false;
     this.touchInputs.interactPressed = false;
     sound.stopAmbientBgm();
     this.dispatchHUD();
@@ -1037,6 +1220,7 @@ export class GameEngine {
 
     if (advanceChapter) {
       this.currentChapterNumber++;
+      this.awardAstralShards(25);
       if (typeof window !== 'undefined') {
         try {
           window.localStorage.setItem(CHAPTER_STORAGE_KEY, String(this.currentChapterNumber));
@@ -1044,12 +1228,15 @@ export class GameEngine {
           // ignore
         }
       }
-      // Keep accumulated score when advancing chapters, restore full HP
+      // Keep accumulated score when advancing chapters, restore full HP & Stamina
+      const mStats = computeMasteryStats(this.heroMastery);
       this.player.hp = this.player.maxHp;
+      this.player.maxStamina = mStats.maxStamina;
+      this.player.stamina = mStats.maxStamina;
       this.player.isInvulnerable = true;
       this.player.invulnerableTimer = 2.0;
     } else {
-      this.player = createInitialPlayer();
+      this.player = createInitialPlayer(this.heroMastery);
       this.damageTakenTotal = 0;
       this.totalEnemiesCleansed = 0;
       this.elapsedTime = 0;
@@ -1165,6 +1352,7 @@ export class GameEngine {
       bonkPressed: false,
       dashPressed: false,
       spinPressed: false,
+      parryPressed: false,
       interactPressed: false,
     };
   }
@@ -1172,19 +1360,42 @@ export class GameEngine {
   public triggerPlayerBonk(): void {
     if (this.attackAnimTimer > 0) return;
     const now = this.elapsedTime;
-    const attack = resolvePlayerAttack(now, this.player.comboCount, this.player.lastAttackTime);
+    const attack = resolvePlayerAttack(
+      now,
+      this.player.comboCount,
+      this.player.lastAttackTime,
+      this.heroMastery,
+      this.player.counterWindowRemaining
+    );
+
+    if (attack.isRiposte) {
+      this.player.counterWindowRemaining = 0;
+    }
 
     this.player.comboCount = attack.combo;
+    this.player.comboStep = attack.combo;
+    this.player.comboWindowRemaining = GAME_CONSTANTS.COMBO_WINDOW_SEC;
     this.player.lastAttackTime = now;
+    this.player.lastHitWasCrit = attack.isCrit;
+    this.player.lastDamageDealt = Math.round(attack.damage * 10) / 10;
     this.attackAnimTimer = 0.28;
     this.currentComboStep = attack.combo;
 
-    sound.playSwing(attack.combo);
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      navigator.vibrate(attack.isFinisher ? 35 : 15);
+    if (this.hero) {
+      this.hero.triggerSlashArc(attack.isRiposte ? 3 : attack.combo, attack.isCrit);
     }
 
-    const attackRange = GAME_CONSTANTS.ATTACK_RADIUS + (attack.isFinisher ? 0.8 : 0);
+    sound.playSwing(attack.combo);
+    if (attack.isRiposte) {
+      this.haptics.triggerRiposteStrike();
+      this.parryFlashIntensity = 0.82;
+      this.parryFlashType = 'riposte';
+      this.cameraPunchTimer = 0.28;
+    } else {
+      this.haptics.triggerCombatImpact(attack.isFinisher || attack.isCrit);
+    }
+
+    const attackRange = GAME_CONSTANTS.ATTACK_RADIUS + attack.radiusBonus;
     let hitAny = false;
 
     for (const item of this.enemies) {
@@ -1193,28 +1404,50 @@ export class GameEngine {
 
       const d = distance(this.playerPos.x, this.playerPos.z, e.x, e.z);
       if (d <= attackRange) {
-        const res = damageEnemy(e, attack.damage);
+        const res = damageEnemy(e, attack.damage, attack.isRiposte ? 1.2 : 0.35);
         item.state = res.enemy;
         hitAny = true;
+        if (attack.isRiposte) {
+          this.spawnCrystalShatterBurst(e.x, getGroundHeight(e.x, e.z) + 0.9, e.z, 12, true);
+        }
 
         const dx = e.x - this.playerPos.x;
         const dz = e.z - this.playerPos.z;
         const len = Math.max(0.1, Math.hypot(dx, dz));
-        e.vx = (dx / len) * (attack.isFinisher ? 12 : 6);
-        e.vz = (dz / len) * (attack.isFinisher ? 12 : 6);
+        const pushForce = attack.isRiposte ? 15.5 : attack.isFinisher ? 13 : 6.5;
+        e.vx = (dx / len) * pushForce;
+        e.vz = (dz / len) * pushForce;
 
         this.particles.spawn(
           e.x,
           getGroundHeight(e.x, e.z) + 0.8,
           e.z,
-          0.9,
-          0.9,
-          0.2,
-          attack.isFinisher ? 18 : 8
+          attack.isCrit ? 0.3 : 0.95,
+          attack.isCrit ? 0.95 : 0.85,
+          attack.isCrit ? 1.0 : 0.25,
+          attack.isRiposte || attack.isFinisher || attack.isCrit ? 22 : 9
+        );
+
+        const dmgDisplay = Math.round(attack.damage * 100);
+        this.spawnFloatingText(
+          e.x,
+          getGroundHeight(e.x, e.z) + 1.4,
+          e.z,
+          attack.isRiposte
+            ? `RIPOSTE ${dmgDisplay}!`
+            : attack.isCrit
+            ? `CRIT ${dmgDisplay}!`
+            : `${dmgDisplay}`,
+          attack.isRiposte ? 'parry' : attack.isCrit ? 'crit' : attack.isFinisher ? 'finisher' : 'normal',
+          attack.isRiposte
+            ? 'COUNTER-ATTACK 1.65X'
+            : attack.isFinisher
+            ? 'FINISHER'
+            : undefined
         );
 
         if (res.wasCleansed) {
-          this.onEnemyCleansed(e.x, e.z, 150);
+          this.onEnemyCleansed(e.x, e.z, attack.isRiposte ? 260 : attack.isCrit ? 200 : 150);
         }
       }
     }
@@ -1235,6 +1468,14 @@ export class GameEngine {
         const effDamage = attack.damage * stunMult;
         this.bossHp = Math.max(0, this.bossHp - effDamage);
         this.particles.spawn(0, 2.0, 0, 0.7, 0.2, 0.9, 14);
+        this.spawnFloatingText(
+          0,
+          3.2,
+          0,
+          attack.isCrit ? `CRIT ${Math.round(effDamage * 100)}!` : `${Math.round(effDamage * 100)}`,
+          attack.isCrit ? 'crit' : 'finisher',
+          this.missionState.bossStunRemaining > 0 ? 'STUNNED 3X' : undefined
+        );
         this.triggerStoryBeat('boss_damaged');
 
         if (this.bossHp <= 0) {
@@ -1244,9 +1485,12 @@ export class GameEngine {
     }
 
     if (hitAny) {
-      sound.playHit(attack.isFinisher);
-      this.hitstopTimer = attack.isFinisher ? 0.06 : 0.035;
-      this.cameraTrauma = Math.min(1.0, this.cameraTrauma + (attack.isFinisher ? 0.45 : 0.25));
+      sound.playHit(attack.isFinisher || attack.isCrit);
+      this.hitstopTimer = attack.isFinisher || attack.isCrit ? 0.065 : 0.035;
+      this.cameraTrauma = Math.min(
+        1.0,
+        this.cameraTrauma + (attack.isFinisher || attack.isCrit ? 0.48 : 0.25)
+      );
       this.dispatchHUD();
     }
   }
@@ -1254,6 +1498,7 @@ export class GameEngine {
   private onEnemyCleansed(x: number, z: number, scoreReward: number): void {
     this.totalEnemiesCleansed++;
     this.player.score += scoreReward;
+    this.awardAstralShards(4);
     this.recordQuestProgress('cleanse_gloomlings', 1);
     sound.playCleansed();
     this.spawnPickup(x, z);
@@ -1287,6 +1532,7 @@ export class GameEngine {
       s.isRestored = true;
     });
     this.player.score += 1000;
+    this.awardAstralShards(35);
     this.triggerStoryBeat('boss_cleansed');
     sound.playShrineRestored();
     this.particles.spawn(this.playerPos.x, this.playerPos.y + 1.8, this.playerPos.z, 0.2, 0.95, 0.4, 36);
@@ -1306,30 +1552,91 @@ export class GameEngine {
   }
 
   public triggerPlayerDash(): void {
-    if (this.player.dashCooldownRemaining > 0 || this.isDashing) return;
+    const dashCost = getEffectiveStaminaCost(
+      GAME_CONSTANTS.DASH_BASE_STAMINA_COST,
+      this.player.staminaBuffRemaining
+    );
+    if (this.player.dashCooldownRemaining > 0 || this.isDashing || this.player.stamina < dashCost) return;
 
+    const mStats = computeMasteryStats(this.heroMastery);
     this.isDashing = true;
     this.dashTimer = GAME_CONSTANTS.PLAYER_DASH_DURATION;
-    this.player.dashCooldownRemaining = GAME_CONSTANTS.PLAYER_DASH_COOLDOWN;
+    this.player.dashCooldownRemaining = GAME_CONSTANTS.PLAYER_DASH_COOLDOWN * mStats.cooldownMultiplier;
+    this.player.stamina = Math.max(0, this.player.stamina - dashCost);
     this.player.isInvulnerable = true;
-    this.player.invulnerableTimer = GAME_CONSTANTS.PLAYER_DASH_DURATION + 0.1;
+    this.player.invulnerableTimer = GAME_CONSTANTS.PLAYER_DASH_DURATION + 0.14;
+
+    // Check for Tactical Perfect Dodge (dodging near an attacking/winding-up enemy or incoming projectile)
+    let isPerfectDodge = false;
+    for (const item of this.enemies) {
+      const e = item.state;
+      if (
+        (e.state === 'windup' || e.state === 'attack') &&
+        distance(this.playerPos.x, this.playerPos.z, e.x, e.z) <= 5.2
+      ) {
+        isPerfectDodge = true;
+        break;
+      }
+    }
+    if (!isPerfectDodge) {
+      for (const proj of this.projectiles) {
+        if (!proj.isReflected && distance(this.playerPos.x, this.playerPos.z, proj.x, proj.z) <= 3.5) {
+          isPerfectDodge = true;
+          break;
+        }
+      }
+    }
+
+    if (isPerfectDodge) {
+      this.player.perfectDodgeCount++;
+      this.player.stamina = Math.min(this.player.maxStamina, this.player.stamina + 18);
+      this.player.score += 120;
+      this.awardAstralShards(2);
+      this.spawnFloatingText(
+        this.playerPos.x,
+        this.playerPos.y + 1.75,
+        this.playerPos.z,
+        'PERFECT EVADE!',
+        'dodge',
+        '+18 STAMINA · +2 SHARDS'
+      );
+      this.particles.spawn(
+        this.playerPos.x,
+        this.playerPos.y + 0.9,
+        this.playerPos.z,
+        0.3,
+        0.95,
+        1.0,
+        22,
+        4.2
+      );
+    }
 
     this.dashDir.set(Math.sin(this.playerFacing), 0, Math.cos(this.playerFacing)).normalize();
     this.recordQuestProgress('leaf_dashes', 1);
     sound.playDash();
 
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      navigator.vibrate(20);
+      navigator.vibrate(isPerfectDodge ? 35 : 20);
     }
 
     this.particles.spawn(this.playerPos.x, this.playerPos.y + 0.3, this.playerPos.z, 1.0, 1.0, 0.9, 12, 2.5);
   }
 
   public triggerPlayerSpin(): void {
-    if (this.player.spinCooldownRemaining > 0) return;
+    const spinCost = getEffectiveStaminaCost(
+      GAME_CONSTANTS.SPIN_BASE_STAMINA_COST,
+      this.player.staminaBuffRemaining
+    );
+    if (this.player.spinCooldownRemaining > 0 || this.player.stamina < spinCost) return;
 
-    this.player.spinCooldownRemaining = GAME_CONSTANTS.PLAYER_SPIN_COOLDOWN;
+    const mStats = computeMasteryStats(this.heroMastery);
+    this.player.spinCooldownRemaining = GAME_CONSTANTS.PLAYER_SPIN_COOLDOWN * mStats.cooldownMultiplier;
+    this.player.stamina = Math.max(0, this.player.stamina - spinCost);
     this.spinAnimTimer = 0.55;
+    if (this.hero) {
+      this.hero.triggerSlashArc(3, true);
+    }
     this.recordQuestProgress('bloom_spins', 1);
     sound.playPollenSpin();
 
@@ -1348,15 +1655,17 @@ export class GameEngine {
       6.0
     );
 
+    const spinRadius = GAME_CONSTANTS.SPIN_RADIUS + mStats.radiusBonus;
+    const spinDamage = 2.6 * mStats.damageMultiplier;
     let hitCount = 0;
     for (const item of this.enemies) {
       const e = item.state;
       if (e.state === 'cleansed') continue;
 
       const d = distance(this.playerPos.x, this.playerPos.z, e.x, e.z);
-      if (d <= GAME_CONSTANTS.SPIN_RADIUS) {
+      if (d <= spinRadius) {
         hitCount++;
-        const res = damageEnemy(e, 2.5);
+        const res = damageEnemy(e, spinDamage);
         item.state = res.enemy;
 
         const dx = e.x - this.playerPos.x;
@@ -1365,22 +1674,30 @@ export class GameEngine {
         e.vx = (dx / len) * 14;
         e.vz = (dz / len) * 14;
 
+        this.spawnFloatingText(
+          e.x,
+          getGroundHeight(e.x, e.z) + 1.4,
+          e.z,
+          `SUPERNOVA ${Math.round(spinDamage * 100)}!`,
+          'finisher'
+        );
+
         if (res.wasCleansed) {
           this.onEnemyCleansed(e.x, e.z, 200);
         }
       }
     }
 
-    if (this.triggerStageMissionAction(GAME_CONSTANTS.SPIN_RADIUS)) {
+    if (this.triggerStageMissionAction(spinRadius)) {
       hitCount++;
     }
 
     if (!this.bossCleansed && this.missionState.mode === 'boss_duel') {
       const dToBoss = distance(this.playerPos.x, this.playerPos.z, 0, 0);
-      if (dToBoss <= GAME_CONSTANTS.SPIN_RADIUS + 1.5) {
+      if (dToBoss <= spinRadius + 1.5) {
         hitCount++;
         const stunMult = this.missionState.bossStunRemaining > 0 ? 3.0 : 1.3;
-        this.bossHp = Math.max(0, this.bossHp - 2.6 * stunMult);
+        this.bossHp = Math.max(0, this.bossHp - spinDamage * stunMult);
         this.triggerStoryBeat('boss_damaged');
         if (this.bossHp <= 0) {
           this.cleanseBoss();
@@ -1393,6 +1710,223 @@ export class GameEngine {
       this.cameraTrauma = Math.min(1.0, this.cameraTrauma + 0.35);
       this.dispatchHUD();
     }
+  }
+
+  /**
+   * Activates the Astral Aegis Parry stance (KeyF / Right-Click / Mobile Parry Button).
+   * If an enemy attack, roller lunge, projectile, or boss strike is within the deflection
+   * envelope, immediately triggers a Perfect Parry with AoE shockwave & 50% stamina cost buff.
+   */
+  public triggerPlayerParry(): void {
+    const res = activateParryStance(this.player, this.heroMastery);
+    if (!res.activated) return;
+
+    this.player = res.player;
+    sound.playParryStance();
+    this.haptics.triggerParryStance();
+    this.particles.spawn(
+      this.playerPos.x,
+      this.playerPos.y + 0.9,
+      this.playerPos.z,
+      0.22,
+      0.88,
+      1.0,
+      12,
+      2.6
+    );
+
+    // Check if an incoming threat is already within the immediate parry envelope
+    let threatDetected = false;
+    for (const item of this.enemies) {
+      const e = item.state;
+      if (e.state === 'cleansed' || e.state === 'stunned') continue;
+      const d = distance(this.playerPos.x, this.playerPos.z, e.x, e.z);
+      if (
+        ((e.state === 'windup' || e.state === 'attack') && d <= 5.2) ||
+        d <= 2.45
+      ) {
+        threatDetected = true;
+        break;
+      }
+    }
+
+    if (!threatDetected) {
+      for (const proj of this.projectiles) {
+        if (
+          !proj.isReflected &&
+          distance(this.playerPos.x, this.playerPos.z, proj.x, proj.z) <=
+            GAME_CONSTANTS.PARRY_DEFLECT_RADIUS + 1.0
+        ) {
+          threatDetected = true;
+          break;
+        }
+      }
+    }
+
+    if (
+      !threatDetected &&
+      !this.bossCleansed &&
+      this.missionState.mode === 'boss_duel' &&
+      distance(this.playerPos.x, this.playerPos.z, 0, 0) <= 6.2
+    ) {
+      threatDetected = true;
+    }
+
+    if (threatDetected) {
+      this.executeSuccessfulParry();
+    } else {
+      this.dispatchHUD();
+    }
+  }
+
+  /**
+   * Executes a Perfect Parry Deflection:
+   * 1. Emits an instant radial AoE shockwave + 3D shattering crystal shards & upward astral energy pillars
+   * 2. Triggers Edge Vignette Screen-Flash, 68ms Micro Hit-Stop & Camera Zoom Punch
+   * 3. Triggers Dual-Motor Controller Rumble & Mobile Vibration
+   * 4. Staggers melee enemies (2.2s stun), reflects projectiles at 1.8x speed, and shreds Boss Aegis Shields
+   */
+  private executeSuccessfulParry(): void {
+    const res = resolveParrySuccess(this.player, this.heroMastery);
+    this.player = res.player;
+    this.parryShockwaveAnimTimer = 0.48;
+    this.awardAstralShards(3);
+    this.recordQuestProgress('leaf_dashes', 1);
+    sound.playParrySuccess();
+
+    // Micro Hit-Stop (68ms) + Camera Zoom Punch + Trauma Shake + Screen Edge Flash
+    this.hitstopTimer = 0.068;
+    this.cameraPunchTimer = 0.38;
+    this.cameraTrauma = Math.min(1.0, this.cameraTrauma + 0.46);
+    this.parryFlashIntensity = 1.0;
+    this.parryFlashType = 'normal';
+
+    // Spawn 3D Shattering Crystal Shards & Upward Astral Energy Pillars around the Warden
+    this.spawnParryShockwaveVisuals(
+      this.playerPos.x,
+      this.playerPos.y,
+      this.playerPos.z
+    );
+
+    this.particles.spawn(
+      this.playerPos.x,
+      this.playerPos.y + 0.95,
+      this.playerPos.z,
+      1.0,
+      0.85,
+      0.25,
+      32,
+      6.2
+    );
+
+    this.spawnFloatingText(
+      this.playerPos.x,
+      this.playerPos.y + 1.9,
+      this.playerPos.z,
+      'PERFECT PARRY!',
+      'parry',
+      'SHOCKWAVE · -50% STAMINA COST'
+    );
+
+    // 1. Instant AoE Shockwave & Melee Stagger (2.2s Stun)
+    for (const item of this.enemies) {
+      const e = item.state;
+      if (e.state === 'cleansed') continue;
+      const d = distance(this.playerPos.x, this.playerPos.z, e.x, e.z);
+      if (d <= res.shockwaveRadius) {
+        const hitRes = damageEnemy(e, res.shockwaveDamage, res.staggerDuration);
+        item.state = hitRes.enemy;
+        item.state.telegraphTimer = 0;
+
+        const dx = e.x - this.playerPos.x;
+        const dz = e.z - this.playerPos.z;
+        const len = Math.max(0.1, Math.hypot(dx, dz));
+        item.state.vx = (dx / len) * 15.5;
+        item.state.vz = (dz / len) * 15.5;
+
+        // Shatter enemy defense crystals at their position
+        this.spawnCrystalShatterBurst(e.x, getGroundHeight(e.x, e.z) + 0.85, e.z, 9, false);
+
+        this.spawnFloatingText(
+          e.x,
+          getGroundHeight(e.x, e.z) + 1.45,
+          e.z,
+          `STAGGER ${Math.round(res.shockwaveDamage * 100)}!`,
+          'parry',
+          'DEFENSE BROKEN · 2.2S'
+        );
+
+        if (hitRes.wasCleansed) {
+          this.onEnemyCleansed(e.x, e.z, 220);
+        }
+      }
+    }
+
+    // 2. Deflect Incoming Void Projectiles Back at Enemies (1.8x Speed)
+    for (const p of this.projectiles) {
+      if (
+        !p.isReflected &&
+        distance(this.playerPos.x, this.playerPos.z, p.x, p.z) <=
+          GAME_CONSTANTS.PARRY_DEFLECT_RADIUS + 1.4
+      ) {
+        p.isReflected = true;
+        p.vx = -p.vx * 1.8;
+        p.vz = -p.vz * 1.8;
+        p.life = 2.8;
+        (p.mesh.material as THREE.MeshBasicMaterial).color.setHex(0xffd166);
+        p.mesh.scale.setScalar(1.35);
+        this.spawnCrystalShatterBurst(p.x, p.y, p.z, 8, false);
+        this.spawnFloatingText(p.x, p.y + 0.6, p.z, 'DEFLECTED!', 'parry');
+      }
+    }
+
+    // 3. Shred Boss Aegis Shield & Stagger Sovereign Boss
+    let bossShieldShredded = false;
+    if (!this.bossCleansed && this.missionState.mode === 'boss_duel') {
+      const dToBoss = distance(this.playerPos.x, this.playerPos.z, 0, 0);
+      if (dToBoss <= res.shockwaveRadius + 2.2) {
+        bossShieldShredded = true;
+        this.parryFlashType = 'boss_shred';
+        this.cameraTrauma = Math.min(1.0, this.cameraTrauma + 0.25);
+
+        // Shred 1 unrestored Starlight Pillar / Aegis Shield segment if any remain
+        const unrestoredIdx = this.shrines.findIndex((s) => !s.isRestored);
+        if (unrestoredIdx !== -1) {
+          const shrine = this.shrines[unrestoredIdx];
+          shrine.isRestored = true;
+          shrine.currentSeeds = shrine.requiredSeeds;
+          const rig = this.shrineRigs[unrestoredIdx];
+          if (rig) {
+            (rig.ring.material as THREE.MeshStandardMaterial).emissive.setHex(0x4cc9f0);
+            (rig.ring.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.1;
+            rig.beamMesh.visible = true;
+          }
+          this.recordQuestProgress('restore_shrines', 1);
+        }
+        if (this.bossRig) {
+          this.bossRig.shieldRing.visible = false;
+        }
+        this.missionState.bossStunRemaining = Math.max(this.missionState.bossStunRemaining, 4.5);
+        const bossParryDmg = res.shockwaveDamage * 1.8;
+        this.bossHp = Math.max(0, this.bossHp - bossParryDmg);
+        this.spawnCrystalShatterBurst(0, 2.1, 0, 18, true);
+        this.spawnFloatingText(
+          0,
+          3.4,
+          0,
+          `AEGIS SHREDDED -${Math.round(bossParryDmg * 100)}!`,
+          'parry',
+          'BOSS STAGGERED'
+        );
+        this.triggerStoryBeat('boss_damaged');
+        if (this.bossHp <= 0) {
+          this.cleanseBoss();
+        }
+      }
+    }
+
+    this.haptics.triggerPerfectParry(bossShieldShredded);
+    this.dispatchHUD();
   }
 
   /**
@@ -1672,11 +2206,39 @@ export class GameEngine {
   private updatePlayingMode(dt: number): void {
     this.elapsedTime += dt;
 
+    // Poll Gamepad Controller Axes & Buttons
+    const gp = this.haptics.pollGamepad();
+    this.gamepadConnected = gp.connected;
+    this.gamepadMoveX = gp.moveX;
+    this.gamepadMoveY = gp.moveY;
+    if (gp.pauseJustPressed) {
+      this.togglePause();
+      return;
+    }
+
+    if (this.parryFlashIntensity > 0) {
+      this.parryFlashIntensity = Math.max(0, this.parryFlashIntensity - dt * 2.55);
+    }
+
     if (this.hitstopTimer > 0) {
       this.hitstopTimer -= dt;
       this.updateCamera(dt);
       this.particles.update(dt);
+      this.updateParryShockwaveVisuals(dt);
       return;
+    }
+
+    if (gp.parryJustPressed) {
+      this.triggerPlayerParry();
+    }
+    if (gp.attackJustPressed) {
+      this.triggerPlayerBonk();
+    }
+    if (gp.dashJustPressed) {
+      this.triggerPlayerDash();
+    }
+    if (gp.spinJustPressed) {
+      this.triggerPlayerSpin();
     }
 
     const weatherMods = getWeatherGameplayModifiers(this.currentWeather);
@@ -1702,9 +2264,10 @@ export class GameEngine {
     this.updateProjectiles(dt);
     this.updateBoss(dt);
     this.particles.update(dt);
+    this.updateParryShockwaveVisuals(dt);
     this.updateCamera(dt);
 
-    if (this.elapsedTime - this.lastHUDTick >= 0.12) {
+    if (this.elapsedTime - this.lastHUDTick >= 0.08) {
       this.lastHUDTick = this.elapsedTime;
       this.dispatchHUD();
     }
@@ -1724,6 +2287,31 @@ export class GameEngine {
     }
     if (this.missionState.bossStunRemaining > 0) {
       this.missionState.bossStunRemaining = Math.max(0, this.missionState.bossStunRemaining - dt);
+    }
+
+    // Animate Environmental Runic Traps & Shockwave Telegraphs on stage obstacles
+    if (this.stagePropsGroup) {
+      const pulseWave = Math.sin(this.elapsedTime * 3.2);
+      const isTrapPeak = pulseWave > 0.92;
+      for (const child of this.stagePropsGroup.children) {
+        if (child.userData?.bladeRing) {
+          child.userData.bladeRing.rotation.y += dt * 3.2;
+        }
+        if (child.userData?.hazardRing) {
+          const hRing = child.userData.hazardRing as THREE.Mesh;
+          hRing.rotation.z -= dt * 1.4;
+          const hMat = hRing.material as THREE.MeshBasicMaterial;
+          hMat.opacity = Math.max(0.12, (pulseWave + 1) * 0.38);
+          if (
+            isTrapPeak &&
+            !this.isDashing &&
+            distance(px, pz, child.position.x, child.position.z) <=
+              (child.userData.hazardRadius || 2.1)
+          ) {
+            this.hitPlayer(1);
+          }
+        }
+      }
     }
 
     // Check Wind-Stream / Aurora Boost Pads
@@ -1898,6 +2486,8 @@ export class GameEngine {
 
     if (Math.abs(this.touchInputs.moveX) > 0.1) inputX += this.touchInputs.moveX;
     if (Math.abs(this.touchInputs.moveY) > 0.1) inputZ += this.touchInputs.moveY;
+    if (Math.abs(this.gamepadMoveX) > 0.1) inputX += this.gamepadMoveX;
+    if (Math.abs(this.gamepadMoveY) > 0.1) inputZ += this.gamepadMoveY;
 
     if (this.touchInputs.bonkPressed) {
       this.touchInputs.bonkPressed = false;
@@ -1910,6 +2500,10 @@ export class GameEngine {
     if (this.touchInputs.spinPressed) {
       this.touchInputs.spinPressed = false;
       this.triggerPlayerSpin();
+    }
+    if (this.touchInputs.parryPressed) {
+      this.touchInputs.parryPressed = false;
+      this.triggerPlayerParry();
     }
     if (this.touchInputs.interactPressed) {
       this.touchInputs.interactPressed = false;
@@ -1993,15 +2587,48 @@ export class GameEngine {
     if (this.attackAnimTimer > 0) {
       this.attackAnimTimer -= 0.016;
       const progress = 1 - Math.max(0, this.attackAnimTimer / 0.28);
-      const swingSwing = Math.sin(progress * Math.PI) * 1.8;
+      const swingSwing = Math.sin(progress * Math.PI) * 1.85;
       this.hero.staff.rotation.x = swingSwing;
-      this.hero.staff.rotation.z = -Math.sin(progress * Math.PI) * 0.8;
+      this.hero.staff.rotation.z =
+        this.currentComboStep === 2
+          ? Math.sin(progress * Math.PI) * 1.15
+          : -Math.sin(progress * Math.PI) * 0.85;
       this.hero.rightArm.rotation.x = -swingSwing * 0.65;
+      this.hero.slashArcMesh.rotation.z = progress * Math.PI * 1.25;
+      this.hero.slashArcMat.opacity = Math.max(0, (1 - progress) * 0.88);
     } else if (this.spinAnimTimer > 0) {
       this.spinAnimTimer -= 0.016;
-      this.hero.staff.rotation.y += 0.45;
+      this.hero.staff.rotation.y += 0.52;
+      this.hero.slashArcMesh.rotation.z += 0.45;
+      this.hero.slashArcMat.opacity = Math.max(0, (this.spinAnimTimer / 0.55) * 0.92);
     } else {
       this.hero.staff.rotation.set(0, 0, 0);
+      if (this.hero.slashArcMesh.visible) {
+        this.hero.slashArcMat.opacity = 0;
+        this.hero.slashArcMesh.visible = false;
+      }
+    }
+
+    // Animate 3D Runic Aegis Parry Ward & Expanding Deflect Shockwave Ring
+    if (this.player.parryWindowRemaining > 0) {
+      this.hero.parryShieldGroup.visible = true;
+      this.hero.parryShieldGroup.rotation.z += 0.14;
+      const wardPulse = 1.0 + Math.sin(this.elapsedTime * 28) * 0.08;
+      this.hero.parryShieldGroup.scale.setScalar(wardPulse);
+    } else {
+      this.hero.parryShieldGroup.visible = false;
+    }
+
+    if (this.parryShockwaveAnimTimer > 0) {
+      this.parryShockwaveAnimTimer = Math.max(0, this.parryShockwaveAnimTimer - 0.016);
+      const shockProgress = 1 - this.parryShockwaveAnimTimer / 0.45;
+      this.hero.parryShockwaveMesh.visible = true;
+      const ringScale = 1.0 + shockProgress * 4.2;
+      this.hero.parryShockwaveMesh.scale.set(ringScale, ringScale, 1);
+      this.hero.parryShockwaveMat.opacity = Math.max(0, (1 - shockProgress) * 0.92);
+    } else if (this.hero.parryShockwaveMesh.visible) {
+      this.hero.parryShockwaveMesh.visible = false;
+      this.hero.parryShockwaveMat.opacity = 0;
     }
 
     // Orient 3D Objective Waypoint Compass toward active stage objective
@@ -2088,6 +2715,17 @@ export class GameEngine {
       e.z += e.vz * dt;
       e.vx *= 0.88;
       e.vz *= 0.88;
+
+      if (e.state === 'stunned') {
+        e.timer -= dt;
+        rig.root.rotation.z = Math.sin(this.elapsedTime * 32 + i) * 0.22;
+        rig.root.position.set(e.x, getGroundHeight(e.x, e.z), e.z);
+        if (e.timer <= 0) {
+          e.state = 'chase';
+          rig.root.rotation.z = 0;
+        }
+        continue;
+      }
 
       // Repel enemies from the Cozy Home Base Sanctuary Safe Zone!
       const distToHome = distance(e.x, e.z, GAME_CONSTANTS.HOME_BASE_X, GAME_CONSTANTS.HOME_BASE_Z);
@@ -2254,7 +2892,59 @@ export class GameEngine {
         continue;
       }
 
+      if (p.isReflected) {
+        // Reflected projectiles damage and stagger enemies or the Sovereign Boss!
+        let hitReflectedTarget = false;
+        for (const item of this.enemies) {
+          const e = item.state;
+          if (e.state === 'cleansed') continue;
+          if (distance(p.x, p.z, e.x, e.z) <= 1.35) {
+            const hitRes = damageEnemy(e, 2.4, 1.8);
+            item.state = hitRes.enemy;
+            this.particles.spawn(p.x, p.y, p.z, 1.0, 0.85, 0.25, 16);
+            this.spawnFloatingText(
+              e.x,
+              getGroundHeight(e.x, e.z) + 1.4,
+              e.z,
+              'DEFLECT HIT 240!',
+              'parry'
+            );
+            if (hitRes.wasCleansed) {
+              this.onEnemyCleansed(e.x, e.z, 220);
+            }
+            hitReflectedTarget = true;
+            break;
+          }
+        }
+
+        if (
+          !hitReflectedTarget &&
+          !this.bossCleansed &&
+          this.missionState.mode === 'boss_duel' &&
+          distance(p.x, p.z, 0, 0) <= 2.4
+        ) {
+          this.bossHp = Math.max(0, this.bossHp - 2.5);
+          this.particles.spawn(0, 2.0, 0, 1.0, 0.85, 0.25, 18);
+          this.spawnFloatingText(0, 3.2, 0, 'DEFLECT HIT 250!', 'parry');
+          if (this.bossHp <= 0) {
+            this.cleanseBoss();
+          }
+          hitReflectedTarget = true;
+        }
+
+        if (hitReflectedTarget || p.life <= 0) {
+          this.scene.remove(p.mesh);
+          this.projectiles.splice(i, 1);
+        }
+        continue;
+      }
+
       const d = distance(p.x, p.z, this.playerPos.x, this.playerPos.z);
+      if (this.player.parryWindowRemaining > 0 && d <= GAME_CONSTANTS.PARRY_DEFLECT_RADIUS) {
+        this.executeSuccessfulParry();
+        continue;
+      }
+
       if (d <= 1.0) {
         this.hitPlayer(1);
         this.particles.spawn(p.x, p.y, p.z, 0.8, 0.4, 0.9, 10);
@@ -2277,17 +2967,53 @@ export class GameEngine {
       return;
     }
 
-    this.bossRig.branches.rotation.y = Math.sin(this.elapsedTime * 0.8) * 0.25;
-    this.bossRig.leftArm.rotation.x = Math.sin(this.elapsedTime * 2.0) * 0.22;
-    this.bossRig.rightArm.rotation.x = -Math.sin(this.elapsedTime * 2.0) * 0.22;
-    this.bossRig.shieldRing.rotation.z += dt * 0.9;
+    // Multi-Phase Boss Transition: Enter Phase 2 (Cosmic Enrage) below 50% HP
+    const nextPhase: 1 | 2 = this.bossHp <= this.bossMaxHp * 0.5 ? 2 : 1;
+    if (nextPhase !== this.bossPhase) {
+      this.bossPhase = nextPhase;
+      if (nextPhase === 2) {
+        (this.bossRig.core.material as THREE.MeshStandardMaterial).emissive.setHex(0xff2a5f);
+        this.bossRig.eyeMat.color.setHex(0xffbe0b);
+        this.bossRig.eyeMat.emissive.setHex(0xff0055);
+        this.particles.spawn(0, 2.4, 0, 1.0, 0.2, 0.4, 36, 6.5);
+      }
+    }
 
-    const pulse = 0.55 + Math.sin(this.elapsedTime * 3.5) * 0.35;
+    const speedMult = this.bossPhase === 2 ? 1.85 : 1.0;
+    this.bossRig.branches.rotation.y = Math.sin(this.elapsedTime * 0.8 * speedMult) * 0.28;
+    this.bossRig.leftArm.rotation.x = Math.sin(this.elapsedTime * 2.0 * speedMult) * 0.26;
+    this.bossRig.rightArm.rotation.x = -Math.sin(this.elapsedTime * 2.0 * speedMult) * 0.26;
+    this.bossRig.shieldRing.rotation.z += dt * 0.95 * speedMult;
+
+    const pulse = 0.55 + Math.sin(this.elapsedTime * 3.5 * speedMult) * 0.38;
     (this.bossRig.core.material as THREE.MeshStandardMaterial).emissiveIntensity = pulse;
+
+    // In Phase 2 during Boss Duel, emit periodic Cosmic Shockwave rings if not stunned
+    if (
+      this.missionState.mode === 'boss_duel' &&
+      this.bossPhase === 2 &&
+      this.missionState.bossStunRemaining <= 0
+    ) {
+      this.bossShockwaveTimer += dt;
+      if (this.bossShockwaveTimer >= 5.2) {
+        this.bossShockwaveTimer = 0;
+        this.particles.spawn(0, 1.0, 0, 1.0, 0.25, 0.5, 28, 7.0);
+        const dPlayer = distance(this.playerPos.x, this.playerPos.z, 0, 0);
+        if (dPlayer <= 5.4 && !this.isDashing) {
+          this.hitPlayer(1);
+        }
+      }
+    }
   }
 
   private hitPlayer(damageAmount: number): void {
     if (isInsideHomeBaseSafeZone(this.playerPos.x, this.playerPos.z)) return;
+
+    // If the player has an active Astral Aegis Parry window, deflect the incoming attack!
+    if (this.player.parryWindowRemaining > 0) {
+      this.executeSuccessfulParry();
+      return;
+    }
 
     const res = applyDamageToPlayer(this.player, damageAmount);
     if (res.tookDamage) {
@@ -2371,12 +3097,225 @@ export class GameEngine {
     }
   }
 
-  private updateCamera(dt: number): void {
-    const targetCamX = this.playerPos.x + this.cameraOffset.x;
-    const targetCamY = this.playerPos.y + this.cameraOffset.y;
-    const targetCamZ = this.playerPos.z + this.cameraOffset.z;
+  /**
+   * Pre-allocates pooled 3D Shattering Crystal Shards (Octahedron splinters)
+   * and 8 Hexagonal Upward Astral Energy Pillars for zero-GC 60fps parry shockwaves.
+   */
+  private initParryShockwavePools(): void {
+    const shardGeo = new THREE.OctahedronGeometry(0.16, 0);
+    shardGeo.scale(0.65, 1.75, 0.65);
 
-    const factor = 1 - Math.exp(-6 * dt);
+    for (let i = 0; i < 48; i++) {
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        emissive: 0x0284c7,
+        emissiveIntensity: 1.35,
+        roughness: 0.12,
+        metalness: 0.85,
+        transparent: true,
+        opacity: 0,
+      });
+      const mesh = new THREE.Mesh(shardGeo, mat);
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this.crystalShards.push({
+        mesh,
+        mat,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        rotVelX: 0,
+        rotVelY: 0,
+        rotVelZ: 0,
+        life: 0,
+        maxLife: 0.55,
+        baseScale: 1,
+      });
+    }
+
+    const pillarGeo = new THREE.CylinderGeometry(0.16, 0.3, 1.0, 6, 1, true);
+    pillarGeo.translate(0, 0.5, 0);
+
+    for (let i = 0; i < 8; i++) {
+      const isGold = i % 2 === 0;
+      const mat = new THREE.MeshBasicMaterial({
+        color: isGold ? 0xffd166 : 0x38bdf8,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const mesh = new THREE.Mesh(pillarGeo, mat);
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this.energyPillars.push({
+        mesh,
+        mat,
+        angle: (i / 8) * Math.PI * 2,
+        startRadius: 1.25,
+        endRadius: 3.9,
+        centerX: 0,
+        centerY: 0,
+        centerZ: 0,
+        life: 0,
+        maxLife: 0.52,
+        targetHeight: 3.8,
+      });
+    }
+  }
+
+  /**
+   * Triggers a radial burst of shattering crystal shards AND 8 upward astral energy pillars around the player.
+   */
+  private spawnParryShockwaveVisuals(cx: number, cy: number, cz: number): void {
+    // 1. Erupt 28 shattering crystal shards radially from the Warden's Aegis Ward
+    this.spawnCrystalShatterBurst(cx, cy + 0.95, cz, 28, true);
+
+    // 2. Surge 8 upward astral energy pillars in an expanding octagonal ring
+    for (let i = 0; i < this.energyPillars.length; i++) {
+      const p = this.energyPillars[i];
+      p.angle = (i / this.energyPillars.length) * Math.PI * 2 + this.playerFacing;
+      p.centerX = cx;
+      p.centerY = cy;
+      p.centerZ = cz;
+      p.startRadius = 1.2;
+      p.endRadius = 3.95;
+      p.maxLife = 0.52;
+      p.life = p.maxLife;
+      p.targetHeight = 3.6 + (i % 2) * 0.65;
+      p.mat.color.setHex(i % 2 === 0 ? 0xffd166 : 0x38bdf8);
+      p.mat.opacity = 0.88;
+      p.mesh.visible = true;
+      p.mesh.position.set(
+        cx + Math.cos(p.angle) * p.startRadius,
+        cy + 0.05,
+        cz + Math.sin(p.angle) * p.startRadius
+      );
+      p.mesh.scale.set(0.85, 0.2, 0.85);
+    }
+  }
+
+  /**
+   * Spawns faceted 3D crystal shards erupting outward with 3-axis angular tumble.
+   */
+  private spawnCrystalShatterBurst(
+    cx: number,
+    cy: number,
+    cz: number,
+    count: number,
+    isAstralPrismatic: boolean
+  ): void {
+    const palette = isAstralPrismatic
+      ? [0x38bdf8, 0xffd166, 0xf8fafc, 0x7dd3fc]
+      : [0xffd166, 0xf59e0b, 0x38bdf8, 0xfef08a];
+
+    let spawned = 0;
+    for (let i = 0; i < this.crystalShards.length && spawned < count; i++) {
+      const s = this.crystalShards[i];
+      if (s.life > 0.08) continue;
+
+      const angle = (spawned / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.45;
+      const speed = 5.8 + Math.random() * 7.8;
+      const colorHex = palette[spawned % palette.length];
+
+      s.mat.color.setHex(colorHex);
+      s.mat.emissive.setHex(colorHex);
+      s.mat.opacity = 1.0;
+      s.vx = Math.cos(angle) * speed;
+      s.vz = Math.sin(angle) * speed;
+      s.vy = 3.4 + Math.random() * 4.8;
+      s.rotVelX = (Math.random() - 0.5) * 22;
+      s.rotVelY = (Math.random() - 0.5) * 22;
+      s.rotVelZ = (Math.random() - 0.5) * 22;
+      s.maxLife = 0.46 + Math.random() * 0.22;
+      s.life = s.maxLife;
+      s.baseScale = 0.75 + Math.random() * 0.65;
+
+      s.mesh.position.set(
+        cx + Math.cos(angle) * 0.45,
+        cy + (Math.random() - 0.3) * 0.4,
+        cz + Math.sin(angle) * 0.45
+      );
+      s.mesh.rotation.set(
+        Math.random() * Math.PI,
+        Math.random() * Math.PI,
+        Math.random() * Math.PI
+      );
+      s.mesh.scale.setScalar(s.baseScale);
+      s.mesh.visible = true;
+      spawned++;
+    }
+  }
+
+  private updateParryShockwaveVisuals(dt: number): void {
+    // 1. Update tumbling 3D crystal shards
+    for (let i = 0; i < this.crystalShards.length; i++) {
+      const s = this.crystalShards[i];
+      if (s.life <= 0) continue;
+
+      s.life -= dt;
+      if (s.life <= 0) {
+        s.mesh.visible = false;
+        s.mat.opacity = 0;
+        continue;
+      }
+
+      const ratio = s.life / s.maxLife;
+      s.vy -= 14.5 * dt;
+      s.mesh.position.x += s.vx * dt;
+      s.mesh.position.y = Math.max(0.08, s.mesh.position.y + s.vy * dt);
+      s.mesh.position.z += s.vz * dt;
+      s.mesh.rotation.x += s.rotVelX * dt;
+      s.mesh.rotation.y += s.rotVelY * dt;
+      s.mesh.rotation.z += s.rotVelZ * dt;
+      s.mesh.scale.setScalar(s.baseScale * Math.max(0.15, ratio));
+      s.mat.opacity = Math.min(1, ratio * 1.25);
+    }
+
+    // 2. Update surging upward astral energy pillars
+    for (let i = 0; i < this.energyPillars.length; i++) {
+      const p = this.energyPillars[i];
+      if (p.life <= 0) continue;
+
+      p.life -= dt;
+      if (p.life <= 0) {
+        p.mesh.visible = false;
+        p.mat.opacity = 0;
+        continue;
+      }
+
+      const progress = 1 - p.life / p.maxLife;
+      const curRadius = p.startRadius + (p.endRadius - p.startRadius) * Math.pow(progress, 0.65);
+      const curAngle = p.angle + progress * 0.75;
+      p.mesh.position.set(
+        p.centerX + Math.cos(curAngle) * curRadius,
+        p.centerY + 0.05,
+        p.centerZ + Math.sin(curAngle) * curRadius
+      );
+      p.mesh.rotation.y += dt * 6.5;
+
+      const heightEnvelope = Math.sin(Math.min(1, progress * 1.35) * Math.PI);
+      const widthScale = Math.max(0.2, 1.15 - progress * 0.75);
+      p.mesh.scale.set(widthScale, Math.max(0.2, p.targetHeight * heightEnvelope), widthScale);
+      p.mat.opacity = Math.max(0, (1 - progress) * 0.88);
+    }
+  }
+
+  private updateCamera(dt: number): void {
+    // Camera Zoom Punch on Perfect Parry / Riposte
+    let punchZoomFactor = 0;
+    if (this.cameraPunchTimer > 0) {
+      this.cameraPunchTimer = Math.max(0, this.cameraPunchTimer - dt);
+      const norm = this.cameraPunchTimer / 0.38;
+      punchZoomFactor = Math.sin(norm * Math.PI) * 0.16;
+    }
+
+    const targetCamX = this.playerPos.x + this.cameraOffset.x * (1 - punchZoomFactor);
+    const targetCamY = this.playerPos.y + this.cameraOffset.y * (1 - punchZoomFactor * 0.85);
+    const targetCamZ = this.playerPos.z + this.cameraOffset.z * (1 - punchZoomFactor);
+
+    const factor = 1 - Math.exp(-(this.cameraPunchTimer > 0 ? 14 : 6) * dt);
     this.camera.position.x += (targetCamX - this.camera.position.x) * factor;
     this.camera.position.y += (targetCamY - this.camera.position.y) * factor;
     this.camera.position.z += (targetCamZ - this.camera.position.z) * factor;
@@ -2389,6 +3328,42 @@ export class GameEngine {
     }
 
     this.camera.lookAt(this.playerPos.x, this.playerPos.y + 1.2, this.playerPos.z);
+    this.updateFloatingTexts(dt);
+  }
+
+  private spawnFloatingText(
+    x: number,
+    y: number,
+    z: number,
+    text: string,
+    type: 'normal' | 'crit' | 'finisher' | 'dodge' | 'parry' | 'heal' | 'shard',
+    subtext?: string
+  ): void {
+    this.floatingTextItems.push({
+      id: `ft_${Date.now()}_${Math.random()}`,
+      x: x + (Math.random() - 0.5) * 0.4,
+      y,
+      z: z + (Math.random() - 0.5) * 0.4,
+      text,
+      subtext,
+      type,
+      age: 0,
+      maxAge: 0.95,
+    });
+    if (this.floatingTextItems.length > 14) {
+      this.floatingTextItems.shift();
+    }
+  }
+
+  private updateFloatingTexts(dt: number): void {
+    for (let i = this.floatingTextItems.length - 1; i >= 0; i--) {
+      const item = this.floatingTextItems[i];
+      item.age += dt;
+      item.y += dt * 1.45;
+      if (item.age >= item.maxAge) {
+        this.floatingTextItems.splice(i, 1);
+      }
+    }
   }
 
   private dispatchHUD(summary?: { finalScore: number; stars: number; timeFormatted: string }): void {
@@ -2491,6 +3466,77 @@ export class GameEngine {
       dailyQuests: this.dailyQuests.map((q) => ({ ...q })),
       dailyQuestsDateKey: this.dailyQuestsDateKey,
       sproutBuddy: { ...this.sproutBuddyState },
+      heroMastery: {
+        ...this.heroMastery,
+        unlockedWeapons: [...this.heroMastery.unlockedWeapons],
+      },
+      bossPhase: this.bossPhase,
+      floatingTexts: this.floatingTextItems.map((ft) => {
+        this.projVec.set(ft.x, ft.y, ft.z).project(this.camera);
+        const screenX = Math.max(8, Math.min(92, (this.projVec.x * 0.5 + 0.5) * 100));
+        const screenY = Math.max(12, Math.min(86, (-this.projVec.y * 0.5 + 0.5) * 100));
+        return {
+          id: ft.id,
+          text: ft.text,
+          subtext: ft.subtext,
+          type: ft.type,
+          screenX,
+          screenY,
+          opacity: Math.max(0, 1 - ft.age / ft.maxAge),
+        };
+      }),
+      floatingCombatTexts: this.floatingTextItems.map((ft) => {
+        this.projVec.set(ft.x, ft.y, ft.z).project(this.camera);
+        const screenX = Math.max(8, Math.min(92, (this.projVec.x * 0.5 + 0.5) * 100));
+        const screenY = Math.max(12, Math.min(86, (-this.projVec.y * 0.5 + 0.5) * 100));
+        return {
+          id: ft.id,
+          text: ft.text,
+          subtext: ft.subtext,
+          type: ft.type,
+          screenX,
+          screenY,
+          opacity: Math.max(0, 1 - ft.age / ft.maxAge),
+        };
+      }),
+      radar: {
+        playerX: this.playerPos.x,
+        playerZ: this.playerPos.z,
+        playerFacing: this.playerFacing,
+        playerRotationY: this.playerFacing,
+        sanctuaryX: GAME_CONSTANTS.HOME_BASE_X,
+        sanctuaryZ: GAME_CONSTANTS.HOME_BASE_Z,
+        enemies: this.enemies
+          .filter((item) => item.state.state !== 'cleansed')
+          .map((item) => ({
+            x: item.state.x,
+            z: item.state.z,
+            type: item.state.type,
+            kind:
+              item.state.type === 'puffer'
+                ? 'charger'
+                : item.state.type === 'roller'
+                ? 'roller'
+                : 'ranged',
+            isWindup: item.state.state === 'windup' || item.state.state === 'attack',
+          })),
+        pickups: this.pickups.map((p) => ({ x: p.x, z: p.z })),
+        shrines: this.shrines.map((s) => ({
+          x: s.x,
+          z: s.z,
+          isRestored: s.isRestored,
+          restored: s.isRestored,
+        })),
+        boss:
+          this.missionState.mode === 'boss_duel' && !this.bossCleansed
+            ? { x: 0, z: 0 }
+            : null,
+        targetX: stageObjective.targetX,
+        targetZ: stageObjective.targetZ,
+      },
+      parryFlashIntensity: this.parryFlashIntensity,
+      parryFlashType: this.parryFlashType,
+      gamepadConnected: this.gamepadConnected,
       finalSummary: summary,
     });
   }
@@ -2499,6 +3545,7 @@ export class GameEngine {
     if (this.animFrameId) {
       cancelAnimationFrame(this.animFrameId);
     }
+    this.haptics.destroy();
     sound.stopAmbientBgm();
     this.renderer.dispose();
   }

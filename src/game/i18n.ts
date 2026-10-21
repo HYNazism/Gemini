@@ -133,11 +133,11 @@ export function getLocalizedChapterInfo(chapterNumber: number, lang: Language): 
 
   const lvl = base.chapterNumber;
   const storyByModeFa: Record<string, string> = {
-    rescue_escort: `در «${base.biomeNameFa}»، نیازی به روشن کردن نیایشگاه‌ها نیست! ۳ جوانه کوچک در قفس‌های خاردار اسیر شده‌اند. قفس‌هایشان را با عصای بلوط بشکنید و کاروان پران و بامزه آن‌ها را به حیاط کلبه امن هدایت کنید!`,
-    harmonic_bells: `در «${base.biomeNameFa}»، از دالان‌های باد صورتی برای سرعت گرفتن عبور کنید و ۴ زنگوله باستانی دره را به صدا درآورید تا پل‌های بلورین روشن شده و دروازه معبد مرکزی ساکورا باز شود!`,
-    heart_tree_defense: `در مرکز «${base.biomeNameFa}»، درخت کهنسال قلب کهربایی در برابر ۳ موج کوتاه از مهاجمان ایستاده است! با ضربه زدن به توتم‌های موج طلایی، درخت را شفا دهید و مهاجمان را دفع کنید!`,
-    meteor_rush: `آسمان «${base.biomeNameFa}» غرق در شهاب‌باران است! روی سکوهای شتاب‌دهنده یخی بپرید و ۶ شهاب‌سنگ ستاره‌ای را پیش از آنکه نورشان در برف خاموش شود شکار کنید!`,
-    boss_duel: `وارد میدان کیهانی «${base.biomeNameFa}» شده‌اید! ستون‌های تشدید اخترتاب را (بدون نیاز به بذر!) فعال کنید تا پادشاه خارهای باستانی گیج شده و با ضربات۳برابری پاکسازی شود!`,
+    rescue_escort: `در قلمرو «${base.biomeNameFa}»، سه نگهبان متحد در قفس‌های رونیک سایه به اسارت درآمده‌اند. با تیغه اخترتاب مهرهای زندان را درهم بشکنید و کاروان نگهبانان را تا دژ مقدس اسکورت کنید!`,
+    harmonic_bells: `در قلمرو «${base.biomeNameFa}»، از جریان‌های باد اخترتاب برای شتاب تاکتیکی بهره بگیرید و ۴ ناقوس تشدید باستانی را به صدا درآورید تا پل‌های بلورین تالار مرکزی بازگشایی شوند!`,
+    heart_tree_defense: `در مرکز «${base.biomeNameFa}»، هسته درخت باستانی در محاصره ۳ لشکر از زره‌پوشان سایه قرار گرفته است! با کمبوهای ۳-ضربه‌ای و فعال‌سازی ستون‌های شوک طلایی، محاصره را درهم بشکنید!`,
+    meteor_rush: `آسمان «${base.biomeNameFa}» شکافته شده و شهاب‌سنگ‌های اخترتاب در حال سقوط‌اند! با جاخالی تاکتیکی از روی سکوهای شتاب عبور کنید و ۶ هسته اخترتاب را پیش از فروپاشی مهار کنید!`,
+    boss_duel: `وارد میدان نبرد نهایی «${base.biomeNameFa}» شده‌اید! ستون‌های تشدید اخترتاب را فعال کنید تا سپر فرمانروای سایه شکسته شود و با ضربات بحرانی ۳برابری او را سرنگون سازید!`,
   };
 
   return {
@@ -151,146 +151,146 @@ export function getLocalizedChapterInfo(chapterNumber: number, lang: Language): 
 export function localizeShrinePrompt(rawPrompt: string, lang: Language): string {
   if (lang === 'en' || !rawPrompt) return rawPrompt;
   if (rawPrompt.includes('Break Bramble Cage')) {
-    return 'کلید E یا دکمه «ضربه/احیا» را بزنید تا قفس شکسته و جوانه آزاد شود!';
+    return 'کلید E یا دکمه «برش/تثبیت» را بزنید تا مهر زندان شکسته و نگهبان آزاد شود!';
   }
   if (rawPrompt.includes('Ring Ancient Chime Bell')) {
-    return 'کلید E یا دکمه «ضربه/احیا» را بزنید تا زنگوله باستانی طنین اندازد!';
+    return 'کلید E یا دکمه «برش/تثبیت» را بزنید تا ناقوس باستانی طنین اندازد!';
   }
   if (rawPrompt.includes('Enter Central Sakura Pavilion')) {
-    return 'وارد معبد مرکزی ساکورا شدید! دکمه E یا ضربه را برای تکمیل مرحله بزنید!';
+    return 'وارد تالار مرکزی شدید! کلید E یا دکمه ضربه را برای فتح مرحله بزنید!';
   }
   if (rawPrompt.includes('Trigger Healing Pulse Totem')) {
-    return 'کلید E یا ضربه را بزنید تا موج شفابخش توتم طلایی فعال شود!';
+    return 'کلید E یا ضربه را بزنید تا موج شوک ستون طلایی آزاد شود!';
   }
   if (rawPrompt.includes('Activate Starlight Pillar')) {
-    return 'کلید E یا ضربه را بزنید تا ستون اخترتاب غول را گیج کند (بدون نیاز به بذر)!';
+    return 'کلید E یا ضربه را بزنید تا ستون تشدید اخترتاب سپر باس را درهم بشکند!';
   }
   const depositMatch = rawPrompt.match(/\((\d+)\/(\d+)\)/);
   if (rawPrompt.includes('Press E') && depositMatch) {
-    return `کلید E یا دکمه «احیا» را بزنید تا بذر خورشید اهدا شود (${depositMatch[1]}/${depositMatch[2]})`;
+    return `کلید E یا دکمه «احیا» را بزنید تا بلور اخترتاب تزریق شود (${depositMatch[1]}/${depositMatch[2]})`;
   }
   const needMatch = rawPrompt.match(/Need (\d+)/);
   if (needMatch) {
-    return `برای بیدار کردن این نیایشگاه به ${needMatch[1]} بذر خورشید دیگر نیاز دارید!`;
+    return `برای احیا و فعال‌سازی این ستون رونیک به ${needMatch[1]} بلور اخترتاب دیگر نیاز دارید!`;
   }
-  return 'کلید E یا دکمه «احیا» را برای تعامل فشار دهید';
+  return 'کلید E یا دکمه «احیا» را برای فعال‌سازی فشار دهید';
 }
 
 export const BODY_TYPE_LABELS: Record<Language, Record<BodyType, string>> = {
   fa: {
-    sprout: 'جوانه گردالو',
-    nimble: 'پری چابک',
-    sturdy: 'بلوط تنومند',
-    tall: 'رهگذر بلندقامت',
+    sprout: 'نگهبان متوازن',
+    nimble: 'شمشیرزن چابک',
+    sturdy: 'سپهدار زره‌پوش',
+    tall: 'تکاور بلندقامت',
   },
   en: {
-    sprout: 'Plump Sprout',
-    nimble: 'Nimble Sprite',
-    sturdy: 'Sturdy Acorn',
-    tall: 'Willow Wanderer',
+    sprout: 'Balanced Warden',
+    nimble: 'Swift Bladedancer',
+    sturdy: 'Vanguard Juggernaut',
+    tall: 'Astral Ranger',
   },
 };
 
 export const FACIAL_FEATURE_LABELS: Record<Language, Record<FacialFeatureType, string>> = {
   fa: {
-    cheerful: 'خندان و گلی',
-    starry: 'چشمان ستاره‌ای',
-    'sleepy-cozy': 'لبخند آرام',
-    'scholar-glasses': 'عینک گرد جنگلی',
+    cheerful: 'نگاه مصمم جنگجو',
+    starry: 'چشمان درخشان اخترتاب',
+    'sleepy-cozy': 'آرامش استاد ذن',
+    'scholar-glasses': 'نقاب تاکتیکی رونیک',
   },
   en: {
-    cheerful: 'Rosy & Cheerful',
-    starry: 'Starry Eyes & Freckles',
-    'sleepy-cozy': 'Cozy Gentle Smile',
-    'scholar-glasses': 'Woodland Round Glasses',
+    cheerful: 'Stoic Resolve',
+    starry: 'Astral Glowing Eyes',
+    'sleepy-cozy': 'Zen Master Calm',
+    'scholar-glasses': 'Runic Tactical Visor',
   },
 };
 
 export const HAIRSTYLE_LABELS: Record<Language, Record<HairstyleType, string>> = {
   fa: {
-    'twin-sprout': 'برگ‌های جوانه دوقلو',
-    'fluffy-bob': 'موی پف‌دار نرم',
-    'braided-crown': 'تاج بافت جنگلی',
-    'mushroom-beret': 'کلاه قارچی',
-    'sun-halo': 'تاج گل آفتابگردان',
+    'twin-sprout': 'تاج شاخ‌دار اخترتاب',
+    'fluffy-bob': 'موی رزمی کوتاه',
+    'braided-crown': 'تاج بافت سلحشوران',
+    'mushroom-beret': 'کلاهخود نگهبان کهن',
+    'sun-halo': 'دیهیم طلایی خورشیدزاد',
   },
   en: {
-    'twin-sprout': 'Twin Sprout Leaves',
-    'fluffy-bob': 'Cozy Fluffy Bob',
-    'braided-crown': 'Woodland Braids',
-    'mushroom-beret': 'Toadstool Beret',
-    'sun-halo': 'Sunflower Crest',
+    'twin-sprout': 'Astral Horned Crest',
+    'fluffy-bob': 'Battle-Worn Crop',
+    'braided-crown': 'Valkyrie War-Braids',
+    'mushroom-beret': 'Ancient Warden Helm',
+    'sun-halo': 'Sunforged Diadem',
   },
 };
 
 export const CLOTHING_STYLE_LABELS: Record<Language, Record<ClothingStyleType, string>> = {
   fa: {
-    'leaf-cloak': 'شنل برگ زمردین',
-    'traveler-poncho': 'پانچو بافت مسافران',
-    'sun-robe': 'ردای بافنده خورشید',
-    'berry-overalls': 'تونیک و شال باغبان',
+    'leaf-cloak': 'زره و شنل نگهبان زمردین',
+    'traveler-poncho': 'ردای تاکتیکی تکاوران',
+    'sun-robe': 'جوشن طلایی محفل خورشید',
+    'berry-overalls': 'زره رزمی شوالیه اخترتاب',
   },
   en: {
-    'leaf-cloak': 'Emerald Leaf Cloak',
-    'traveler-poncho': 'Woven Traveler Poncho',
-    'sun-robe': 'Royal Sun-Weaver Mantle',
-    'berry-overalls': 'Gardener Tunic & Scarf',
+    'leaf-cloak': 'Emerald Warden Armor',
+    'traveler-poncho': 'Ranger Tactical Mantle',
+    'sun-robe': 'Sun-Order Plate & Cloak',
+    'berry-overalls': 'Astral Knight Cuirass',
   },
 };
 
 export const ROOF_STYLE_LABELS: Record<Language, Record<RoofStyleType, string>> = {
   fa: {
-    moss: 'خزه‌ای',
-    terracotta: 'سفالی',
-    slate: 'سنگی',
-    sakura: 'شکوفه صورتی',
+    moss: 'سبز باستانی',
+    terracotta: 'سفال کهربایی',
+    slate: 'سنگ ابسیدین',
+    sakura: 'بلور سرخ‌فام',
   },
   en: {
-    moss: 'Moss',
-    terracotta: 'Terracotta',
-    slate: 'Slate',
-    sakura: 'Sakura',
+    moss: 'Ancient Moss',
+    terracotta: 'Amber Tile',
+    slate: 'Obsidian Slate',
+    sakura: 'Crimson Quartz',
   },
 };
 
 export const HEARTH_STYLE_LABELS: Record<Language, Record<HearthStyleType, string>> = {
   fa: {
-    campfire: 'آتش هیزمی',
-    fountain: 'چشمه نور',
-    lantern: 'فانوس کهربا',
+    campfire: 'آتشدان مقدس',
+    fountain: 'چشمه اخترتاب',
+    lantern: 'ستون رونیک طلایی',
   },
   en: {
-    campfire: 'Campfire',
-    fountain: 'Fountain',
-    lantern: 'Lantern',
+    campfire: 'Sacred Brazier',
+    fountain: 'Astral Wellspring',
+    lantern: 'Golden Runic Obelisk',
   },
 };
 
 export const GARDEN_STYLE_LABELS: Record<Language, Record<GardenStyleType, string>> = {
   fa: {
-    flowers: 'گل‌های وحشی',
-    mushrooms: 'قارچ‌های شب‌تاب',
-    stones: 'سنگ‌چین باستانی',
+    flowers: 'گیاهان نورانی',
+    mushrooms: 'بلورهای مانا',
+    stones: 'سنگ‌نگاره‌های رونیک',
   },
   en: {
-    flowers: 'Flowers',
-    mushrooms: 'Mushrooms',
-    stones: 'Stones',
+    flowers: 'Luminous Flora',
+    mushrooms: 'Mana Crystals',
+    stones: 'Runic Monoliths',
   },
 };
 
 export const PERFORMANCE_LABELS: Record<Language, Record<PerformanceQuality, string>> = {
   fa: {
-    eco: 'اقتصادی (گوشی ضعیف)',
-    balanced: 'متعادل',
-    high: 'کیفیت بالا',
-    ultra: 'اولترا (جزئیات حداکثری)',
+    eco: 'اقتصادی (نرخ فریم بالا)',
+    balanced: 'متعادل (استاندارد)',
+    high: 'کیفیت بالا (PBR)',
+    ultra: 'اولترا (حداکثر جزئیات سه‌بعدی)',
   },
   en: {
-    eco: 'Eco (Weak Phones)',
+    eco: 'Performance (60 FPS)',
     balanced: 'Balanced',
-    high: 'High',
-    ultra: 'Ultra (Max Detail)',
+    high: 'High Fidelity',
+    ultra: 'Ultra (Max PBR)',
   },
 };
 
@@ -330,33 +330,33 @@ export function localizeDailyQuest(
   switch (quest.type) {
     case 'harvest_seeds':
       return {
-        title: `جمع‌آوری ${t} بذر خورشید`,
-        description: `${t} بذر طلایی و درخشان خورشید را در سراسر بیشه جمع کنید.`,
+        title: `تسخیر ${t} بلور اخترتاب`,
+        description: `${t} بلور درخشان اخترتاب را در میدان نبرد جمع‌آوری کنید.`,
       };
     case 'cleanse_gloomlings':
       return {
-        title: `پاکسازی ${t} موجود تاریکی`,
-        description: `${t} موجود بازیگوش تاریکی را با عصای بلوط خود پاکسازی کنید.`,
+        title: `سرنگونی ${t} دشمن سایه‌زاد`,
+        description: `${t} مهاجم فاسد سایه‌زاد را با سلاح رونیک خود از پای درآورید.`,
       };
     case 'restore_shrines':
       return {
-        title: `احیای ${t} نیایشگاه باستانی`,
-        description: `با اهدای بذر خورشید، ${t} نیایشگاه کم‌سو را در جنگل بیدار کنید.`,
+        title: `بیدار کردن ${t} ستون رونیک`,
+        description: `با تزریق بلور اخترتاب، ${t} ستون باستانی را در قلمرو فعال سازید.`,
       };
     case 'bloom_spins':
       return {
-        title: `اجرای ${t} چرخش شکوفه`,
-        description: `${t} بار مهارت «چرخش گرده شکوفه» را در مرغزار اجرا کنید.`,
+        title: `آزادسازی ${t} موج اخترتاب (Nova)`,
+        description: `${t} بار مهارت «موج انفجاری اخترتاب» (کلید Q) را در نبرد اجرا کنید.`,
       };
     case 'leaf_dashes':
       return {
-        title: `انجام ${t} جهش برگی`,
-        description: `${t} بار با استفاده از «جهش برگی» به سرعت حرکت کنید.`,
+        title: `اجرای ${t} جاخالی تاکتیکی`,
+        description: `${t} بار با استفاده از «جاخالی تاکتیکی» (Shift) از حملات عبور کنید.`,
       };
     case 'combo_finishers':
       return {
-        title: `اجرای ${t} ضربه نهایی کمبو`,
-        description: `${t} بار ضربه سوم و سنگین زنجیره‌ای عصای بلوط را فرود آورید.`,
+        title: `فرود آوردن ${t} ضربه نهایی کمبو`,
+        description: `${t} بار ضربه سوم و شکافنده زنجیره کمبو را بر دشمنان وارد کنید.`,
       };
   }
 }

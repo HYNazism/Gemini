@@ -34,6 +34,14 @@ import {
   getGraphicsQualityProfile,
   computeStageObjectiveGuide,
   getInGameStoryBeat,
+  getStageBiomeTheme,
+  DEFAULT_HERO_MASTERY,
+  computeMasteryStats,
+  upgradeMasterySkill,
+  unlockOrEquipWeapon,
+  createInitialSproutBuddy,
+  computeSproutBuddyUpdate,
+  createInitialMissionState,
   GAME_CONSTANTS,
   type Shrine,
   type EnemyState,
@@ -465,3 +473,62 @@ test('getInGameStoryBeat returns bilingual narrative beats for gameplay mileston
   assert.equal(beatCleanse.id, 'boss_cleansed');
   assert.ok(beatCleanse.hintFa.includes('فصل'));
 });
+
+test('ARPG Mastery Skill Tree and Mythic Weapon Armory compute stats and upgrades accurately', () => {
+  const baseStats = computeMasteryStats(DEFAULT_HERO_MASTERY);
+  assert.equal(baseStats.maxStamina, 100);
+  assert.ok(baseStats.damageMultiplier >= 1);
+  assert.ok(baseStats.critChance > 0);
+
+  const withShards = { ...DEFAULT_HERO_MASTERY, astralShards: 200 };
+  const up1 = upgradeMasterySkill(withShards, 'attackPowerLevel');
+  assert.equal(up1.upgraded, true);
+  assert.equal(up1.mastery.attackPowerLevel, 2);
+  assert.equal(up1.mastery.astralShards, 188);
+
+  const unlockHalberd = unlockOrEquipWeapon(up1.mastery, 'runic-halberd');
+  assert.equal(unlockHalberd.success, true);
+  assert.equal(unlockHalberd.mastery.equippedWeapon, 'runic-halberd');
+  assert.ok(unlockHalberd.mastery.unlockedWeapons.includes('runic-halberd'));
+});
+
+test('ARPG 3-Hit Combo Finisher and Critical Strike scaling work with HeroMasteryState', () => {
+  const mastery = {
+    ...DEFAULT_HERO_MASTERY,
+    attackPowerLevel: 4,
+    critChanceLevel: 5,
+    equippedWeapon: 'sunforged-greatsword' as const,
+  };
+  const hit1 = resolvePlayerAttack(1.0, 0, -10, mastery);
+  const hit2 = resolvePlayerAttack(1.3, hit1.combo, 1.0, mastery);
+  const hit3 = resolvePlayerAttack(1.6, hit2.combo, 1.3, mastery);
+  assert.equal(hit3.combo, 3);
+  assert.equal(hit3.isFinisher, true);
+  assert.ok(hit3.damage > hit1.damage);
+  assert.ok(hit3.reachMultiplier > 1.1);
+});
+
+test('Dark-Mythic 5-Biome themes and Orin Astrolabe Sentinel radar operate deterministically', () => {
+  for (let stage = 1; stage <= 5; stage++) {
+    const biome = getStageBiomeTheme(stage);
+    assert.ok(biome.nameFa.length > 3);
+    assert.ok(biome.nameEn.length > 3);
+  }
+
+  const radar = computeSproutBuddyUpdate({
+    buddy: createInitialSproutBuddy(0, 0),
+    playerX: 0,
+    playerZ: 0,
+    playerFacing: 0,
+    sunSeeds: 0,
+    elapsedTime: 1,
+    dt: 0.016,
+    pickups: [{ x: 6, z: 8 }],
+    shrines: [{ id: 1, name: 'Obelisk', x: 30, z: 30, isRestored: false, currentSeeds: 0, requiredSeeds: 3 }],
+    missionState: createInitialMissionState(1),
+  });
+  assert.equal(radar.isHighlighting, true);
+  assert.equal(radar.targetType, 'seed');
+  assert.equal(radar.distanceToTarget, 10);
+});
+

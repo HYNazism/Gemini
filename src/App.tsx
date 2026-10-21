@@ -18,6 +18,7 @@ import { DailyQuestsModal } from './components/DailyQuestsModal';
 import { getSavedLanguage, saveLanguage, type Language } from './game/i18n';
 import {
   createInitialPlayer,
+  createInitialHeroMastery,
   DEFAULT_CUSTOMIZATION,
   DEFAULT_HOME_BASE,
   generateChapterInfo,
@@ -31,6 +32,7 @@ import {
   type WeatherType,
   type TimePhase,
   type PerformanceQuality,
+  type WeaponType,
 } from './game/rules';
 
 export default function App() {
@@ -38,7 +40,9 @@ export default function App() {
   const engineRef = useRef<GameEngine | null>(null);
 
   const [lang, setLang] = useState<Language>(() => getSavedLanguage());
-  const [customizeMode, setCustomizeMode] = useState<'none' | 'hero' | 'home' | 'atmosphere'>('none');
+  const [customizeMode, setCustomizeMode] = useState<
+    'none' | 'hero' | 'mastery' | 'home' | 'atmosphere'
+  >('none');
   const [adMobModalOpen, setAdMobModalOpen] = useState(false);
   const [dailyQuestsModalOpen, setDailyQuestsModalOpen] = useState(false);
 
@@ -55,9 +59,10 @@ export default function App() {
     const ch1 = generateChapterInfo(1);
     const initialMission = createInitialMissionState(1);
     const initialBeat = getInGameStoryBeat(1, 'chapter_start');
+    const initialMastery = createInitialHeroMastery();
     return {
       gameState: 'title',
-      player: createInitialPlayer(),
+      player: createInitialPlayer(initialMastery),
       shrines: [],
       totalShrines: 4,
       restoredShrines: 0,
@@ -68,7 +73,7 @@ export default function App() {
       isInsideSafeZone: true,
       isMuted: false,
       weather: 'sunshine',
-      weatherDescription: 'Golden Sunshine: +25% Sun-Seed Harvest Score',
+      weatherDescription: 'Golden Sunshine: +25% Astral Relic Score',
       timePhase: 'day',
       timeOfDay: 0.3,
       autoDayNight: true,
@@ -101,6 +106,8 @@ export default function App() {
       performanceQuality: 'balanced',
       dailyQuests: generateDailyQuests(todayKey, 0),
       dailyQuestsDateKey: todayKey,
+      heroMastery: initialMastery,
+      bossPhase: 1,
     };
   });
 
@@ -186,10 +193,10 @@ export default function App() {
     engineRef.current?.toggleMute();
   };
 
-  const handleOpenCustomize = (tab: 'hero' | 'home' | 'atmosphere') => {
+  const handleOpenCustomize = (tab: 'hero' | 'mastery' | 'home' | 'atmosphere') => {
     setDailyQuestsModalOpen(false);
     setCustomizeMode(tab);
-    if (tab === 'hero') {
+    if (tab === 'hero' || tab === 'mastery') {
       engineRef.current?.setCameraFocusMode('customize-hero');
     } else if (tab === 'home') {
       engineRef.current?.setCameraFocusMode('customize-home');
@@ -209,6 +216,16 @@ export default function App() {
 
   const handleUpdateHomeBase = (next: HomeBaseCustomization) => {
     engineRef.current?.updateHomeBaseCustomization(next);
+  };
+
+  const handleUpgradeSkill = (
+    skillKey: 'attackPowerLevel' | 'critChanceLevel' | 'staminaMaxLevel' | 'cooldownHasteLevel'
+  ) => {
+    engineRef.current?.upgradeHeroSkill(skillKey);
+  };
+
+  const handleEquipOrUnlockWeapon = (weaponId: WeaponType) => {
+    engineRef.current?.equipOrUnlockHeroWeapon(weaponId);
   };
 
   const handleSetWeather = (w: WeatherType) => {
@@ -239,11 +256,15 @@ export default function App() {
     engineRef.current?.rerollDailyQuests();
   };
 
+  const handleTriggerParry = () => {
+    engineRef.current?.triggerPlayerParry();
+  };
+
   return (
     <div
       data-testid="game-root"
       data-lang={lang}
-      className="relative w-screen h-[100dvh] overflow-hidden bg-[#1b4332] select-none touch-none"
+      className="relative w-screen h-[100dvh] overflow-hidden bg-[#0a141d] select-none touch-none"
     >
       {/* Isolated Three.js Canvas Container */}
       <div
@@ -262,6 +283,7 @@ export default function App() {
           dailyQuests={hudData.dailyQuests}
           onOpenDailyQuests={() => setDailyQuestsModalOpen(true)}
           onOpenCustomizeHero={() => handleOpenCustomize('hero')}
+          onOpenMasteryArmory={() => handleOpenCustomize('mastery')}
           onOpenCustomizeHome={() => handleOpenCustomize('home')}
           onOpenAtmosphereSettings={() => handleOpenCustomize('atmosphere')}
           onOpenAdMobAndApk={() => setAdMobModalOpen(true)}
@@ -287,6 +309,7 @@ export default function App() {
             onAdvanceChapter={handleNextChapter}
             onJumpToChapter={handleJumpToChapter}
             onSetPerformanceQuality={handleSetPerformanceQuality}
+            onTriggerParry={handleTriggerParry}
             lang={lang}
             onToggleLang={handleToggleLang}
           />
@@ -297,6 +320,10 @@ export default function App() {
               isNearShrine={hudData.isNearShrine}
               dashCooldown={hudData.player.dashCooldownRemaining}
               spinCooldown={hudData.player.spinCooldownRemaining}
+              parryCooldown={hudData.player.parryCooldownRemaining}
+              parryActive={hudData.player.parryWindowRemaining > 0}
+              counterReady={hudData.player.counterWindowRemaining > 0}
+              staminaBuffActive={hudData.player.staminaBuffRemaining > 0}
               lang={lang}
             />
           )}
@@ -314,19 +341,22 @@ export default function App() {
           onJumpToChapter={handleJumpToChapter}
           onReviveWithAd={handleReviveWithAd}
           onToggleMute={handleToggleMute}
-          onOpenCustomize={() => handleOpenCustomize('hero')}
+          onOpenCustomize={() => handleOpenCustomize('mastery')}
           onOpenAdMobAndApk={() => setAdMobModalOpen(true)}
           lang={lang}
           onToggleLang={handleToggleLang}
         />
       )}
 
-      {/* 3D Character Customizer, Cozy Sanctuary Base & Weather/FPS Drawer */}
+      {/* 3D Character Customizer, Skill Tree & Armory, Citadel Base & Weather/FPS Drawer */}
       <CustomizeAndBaseModal
         mode={customizeMode}
         onClose={handleCloseCustomize}
         characterCustom={hudData.characterCustom}
         onUpdateCharacter={handleUpdateCharacter}
+        heroMastery={hudData.heroMastery}
+        onUpgradeSkill={handleUpgradeSkill}
+        onEquipOrUnlockWeapon={handleEquipOrUnlockWeapon}
         homeBaseCustom={hudData.homeBaseCustom}
         onUpdateHomeBase={handleUpdateHomeBase}
         trophies={hudData.trophies}

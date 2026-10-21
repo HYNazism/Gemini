@@ -4,17 +4,241 @@
  * and AdMob validation for Sproutling: Grove Guardian 3D.
  */
 
+export type WeaponType = 'astral-glaive' | 'sunforged-greatsword' | 'runic-halberd';
+
+export interface HeroMasteryState {
+  astralShards: number;
+  attackPowerLevel: number; // 1..5
+  critChanceLevel: number; // 1..5
+  staminaMaxLevel: number; // 1..5
+  cooldownHasteLevel: number; // 1..5
+  equippedWeapon: WeaponType;
+  unlockedWeapons: WeaponType[];
+}
+
+export interface WeaponSpec {
+  id: WeaponType;
+  nameFa: string;
+  nameEn: string;
+  descFa: string;
+  descEn: string;
+  unlockCost: number;
+  damageBonus: number;
+  critBonus: number;
+  reachMultiplier: number;
+  primaryColorHex: number;
+  emissiveHex: number;
+}
+
+export const WEAPON_CATALOG: WeaponSpec[] = [
+  {
+    id: 'astral-glaive',
+    nameFa: 'ناگیناتای اخترتاب',
+    nameEn: 'Astral Glaive',
+    descFa: 'سلاح متوازن نگهبانان با سرعت برش بالا و شعاع قوسی دقیق',
+    descEn: 'Balanced Warden polearm with swift crescent cleave and agile reach',
+    unlockCost: 0,
+    damageBonus: 1.0,
+    critBonus: 0.05,
+    reachMultiplier: 1.05,
+    primaryColorHex: 0x38bdf8,
+    emissiveHex: 0x0284c7,
+  },
+  {
+    id: 'sunforged-greatsword',
+    nameFa: 'شمشیر بزرگ خورشیدزاد',
+    nameEn: 'Sunforged Greatsword',
+    descFa: 'تیغه سنگین طلایی با +۲۸٪ قدرت برش و موج آتشین در ضربه سوم کمبو',
+    descEn: 'Heavy golden blade dealing +28% strike damage and blazing finisher waves',
+    unlockCost: 80,
+    damageBonus: 1.28,
+    critBonus: 0.08,
+    reachMultiplier: 1.12,
+    primaryColorHex: 0xfbbf24,
+    emissiveHex: 0xd97706,
+  },
+  {
+    id: 'runic-halberd',
+    nameFa: 'تبر نیزه‌ای رونیک',
+    nameEn: 'Runic Halberd',
+    descFa: 'سلاح شکافنده زره با +۲۲٪ برد ضربه و +۱۵٪ شانس ضربه بحرانی',
+    descEn: 'Armor-piercing halberd with +22% cleave radius and +15% critical strike chance',
+    unlockCost: 120,
+    damageBonus: 1.16,
+    critBonus: 0.15,
+    reachMultiplier: 1.22,
+    primaryColorHex: 0x34d399,
+    emissiveHex: 0x059669,
+  },
+];
+
+export const DEFAULT_HERO_MASTERY: HeroMasteryState = {
+  astralShards: 180,
+  attackPowerLevel: 1,
+  critChanceLevel: 1,
+  staminaMaxLevel: 1,
+  cooldownHasteLevel: 1,
+  equippedWeapon: 'astral-glaive',
+  unlockedWeapons: ['astral-glaive'],
+};
+
+const MASTERY_STORAGE_KEY = 'aethelgard_mastery_v1';
+
+export function getSavedHeroMastery(): HeroMasteryState {
+  if (typeof window === 'undefined') return { ...DEFAULT_HERO_MASTERY };
+  try {
+    const raw = window.localStorage.getItem(MASTERY_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_HERO_MASTERY };
+    const parsed = JSON.parse(raw) as Partial<HeroMasteryState>;
+    return {
+      astralShards: typeof parsed.astralShards === 'number' ? parsed.astralShards : 180,
+      attackPowerLevel: Math.max(1, Math.min(5, parsed.attackPowerLevel ?? 1)),
+      critChanceLevel: Math.max(1, Math.min(5, parsed.critChanceLevel ?? 1)),
+      staminaMaxLevel: Math.max(1, Math.min(5, parsed.staminaMaxLevel ?? 1)),
+      cooldownHasteLevel: Math.max(1, Math.min(5, parsed.cooldownHasteLevel ?? 1)),
+      equippedWeapon: parsed.equippedWeapon ?? 'astral-glaive',
+      unlockedWeapons: Array.isArray(parsed.unlockedWeapons) && parsed.unlockedWeapons.length > 0
+        ? parsed.unlockedWeapons
+        : ['astral-glaive'],
+    };
+  } catch {
+    return { ...DEFAULT_HERO_MASTERY };
+  }
+}
+
+export function saveHeroMastery(state: HeroMasteryState): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(MASTERY_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+export function getMasteryUpgradeCost(currentLevel: number): number {
+  return currentLevel * 45;
+}
+
+export function upgradeHeroMasterySkill(
+  state: HeroMasteryState,
+  skillKey: 'attackPowerLevel' | 'critChanceLevel' | 'staminaMaxLevel' | 'cooldownHasteLevel'
+): { state: HeroMasteryState; success: boolean } {
+  const currentLvl = state[skillKey];
+  if (currentLvl >= 5) return { state, success: false };
+  const cost = getMasteryUpgradeCost(currentLvl);
+  if (state.astralShards < cost) return { state, success: false };
+  const next: HeroMasteryState = {
+    ...state,
+    astralShards: state.astralShards - cost,
+    [skillKey]: currentLvl + 1,
+  };
+  saveHeroMastery(next);
+  return { state: next, success: true };
+}
+
+export function selectOrUnlockWeapon(
+  state: HeroMasteryState,
+  weaponId: WeaponType
+): { state: HeroMasteryState; success: boolean } {
+  if (state.unlockedWeapons.includes(weaponId)) {
+    const next: HeroMasteryState = { ...state, equippedWeapon: weaponId };
+    saveHeroMastery(next);
+    return { state: next, success: true };
+  }
+  const spec = WEAPON_CATALOG.find((w) => w.id === weaponId);
+  if (!spec || state.astralShards < spec.unlockCost) {
+    return { state, success: false };
+  }
+  const next: HeroMasteryState = {
+    ...state,
+    astralShards: state.astralShards - spec.unlockCost,
+    unlockedWeapons: [...state.unlockedWeapons, weaponId],
+    equippedWeapon: weaponId,
+  };
+  saveHeroMastery(next);
+  return { state: next, success: true };
+}
+
+export function computeCombatStatsFromMastery(mastery: HeroMasteryState = DEFAULT_HERO_MASTERY) {
+  const weapon = WEAPON_CATALOG.find((w) => w.id === mastery.equippedWeapon) || WEAPON_CATALOG[0];
+  const damageMultiplier = (1 + (mastery.attackPowerLevel - 1) * 0.18) * weapon.damageBonus;
+  const critChance = Math.min(0.75, 0.12 + (mastery.critChanceLevel - 1) * 0.08 + weapon.critBonus);
+  const critMultiplier = 1.75 + (mastery.critChanceLevel - 1) * 0.15;
+  const maxStamina = 100 + (mastery.staminaMaxLevel - 1) * 20;
+  const staminaRegenPerSec = 28 + (mastery.staminaMaxLevel - 1) * 5;
+  const cooldownMultiplier = 1 + (mastery.cooldownHasteLevel - 1) * 0.12;
+  const reachMultiplier = weapon.reachMultiplier;
+
+  return {
+    damageMultiplier,
+    critChance,
+    critMultiplier,
+    maxStamina,
+    staminaRegenPerSec,
+    cooldownMultiplier: 1 / cooldownMultiplier,
+    reachMultiplier,
+    radiusBonus: (reachMultiplier - 1.0) * 2.2,
+    weaponSpec: weapon,
+  };
+}
+
+export function createInitialHeroMastery(): HeroMasteryState {
+  return {
+    ...DEFAULT_HERO_MASTERY,
+    unlockedWeapons: [...DEFAULT_HERO_MASTERY.unlockedWeapons],
+  };
+}
+
+export function upgradeMasterySkill(
+  state: HeroMasteryState,
+  skillKey: 'attackPowerLevel' | 'critChanceLevel' | 'staminaMaxLevel' | 'cooldownHasteLevel'
+): { mastery: HeroMasteryState; upgraded: boolean } {
+  const currentLvl = state[skillKey];
+  if (currentLvl >= 5) return { mastery: state, upgraded: false };
+  const cost = currentLvl * 12;
+  if (state.astralShards < cost) return { mastery: state, upgraded: false };
+  const next: HeroMasteryState = {
+    ...state,
+    astralShards: state.astralShards - cost,
+    [skillKey]: currentLvl + 1,
+  };
+  saveHeroMastery(next);
+  return { mastery: next, upgraded: true };
+}
+
+export function unlockOrEquipWeapon(
+  state: HeroMasteryState,
+  weaponId: WeaponType
+): { mastery: HeroMasteryState; success: boolean } {
+  const res = selectOrUnlockWeapon(state, weaponId);
+  return { mastery: res.state, success: res.success };
+}
+
+export const computeMasteryStats = computeCombatStatsFromMastery;
+
 export interface PlayerStats {
   hp: number;
   maxHp: number;
+  stamina: number;
+  maxStamina: number;
   sunSeeds: number;
   score: number;
   comboCount: number;
+  comboStep: number;
+  comboWindowRemaining: number;
   lastAttackTime: number;
   dashCooldownRemaining: number;
   spinCooldownRemaining: number;
   isInvulnerable: boolean;
   invulnerableTimer: number;
+  lastHitWasCrit: boolean;
+  lastDamageDealt: number;
+  perfectDodgeCount: number;
+  parryWindowRemaining: number;
+  parryCooldownRemaining: number;
+  counterWindowRemaining: number;
+  staminaBuffRemaining: number;
+  parrySuccessCount: number;
 }
 
 export type EnemyType = 'puffer' | 'roller' | 'sprite' | 'boss';
@@ -35,6 +259,7 @@ export interface EnemyState {
   targetZ: number;
   speed: number;
   size: number;
+  bossPhase?: 1 | 2;
 }
 
 export interface Shrine {
@@ -68,63 +293,63 @@ export interface CharacterCustomization {
 
 export const CUSTOMIZATION_OPTIONS = {
   bodyTypes: [
-    { id: 'sprout' as BodyType, label: 'Plump Sprout', scale: [1.0, 1.0, 1.0] as [number, number, number] },
-    { id: 'nimble' as BodyType, label: 'Nimble Sprite', scale: [0.86, 1.04, 0.86] as [number, number, number] },
-    { id: 'sturdy' as BodyType, label: 'Sturdy Acorn', scale: [1.18, 0.92, 1.15] as [number, number, number] },
-    { id: 'tall' as BodyType, label: 'Willow Wanderer', scale: [0.92, 1.16, 0.92] as [number, number, number] },
+    { id: 'sprout' as BodyType, label: 'Balanced Warden', scale: [1.0, 1.0, 1.0] as [number, number, number] },
+    { id: 'nimble' as BodyType, label: 'Swift Valkyrie', scale: [0.92, 1.05, 0.92] as [number, number, number] },
+    { id: 'sturdy' as BodyType, label: 'Heavy Juggernaut', scale: [1.14, 0.98, 1.12] as [number, number, number] },
+    { id: 'tall' as BodyType, label: 'Archon Dragoon', scale: [0.96, 1.14, 0.96] as [number, number, number] },
   ],
   skinColors: [
-    { hex: '#8fd14f', label: 'Sage Sprout' },
-    { hex: '#f4c29f', label: 'Warm Peach' },
-    { hex: '#e0ac69', label: 'Golden Honey' },
-    { hex: '#8d5524', label: 'Rich Chestnut' },
-    { hex: '#4b2e1e', label: 'Deep Espresso' },
-    { hex: '#c8b6ff', label: 'Moonlight Lavender' },
+    { hex: '#cbd5e1', label: 'Starforged Silver' },
+    { hex: '#475569', label: 'Obsidian Titanium' },
+    { hex: '#fbbf24', label: 'Solar Gold Alloy' },
+    { hex: '#38bdf8', label: 'Astral Cobalt' },
+    { hex: '#a855f7', label: 'Void Amethyst' },
+    { hex: '#f43f5e', label: 'Crimson Valkyrie' },
   ],
   hairstyles: [
-    { id: 'twin-sprout' as HairstyleType, label: 'Twin Sprout Leaves' },
-    { id: 'fluffy-bob' as HairstyleType, label: 'Cozy Fluffy Bob' },
-    { id: 'braided-crown' as HairstyleType, label: 'Woodland Braids' },
-    { id: 'mushroom-beret' as HairstyleType, label: 'Toadstool Beret' },
-    { id: 'sun-halo' as HairstyleType, label: 'Sunflower Crest' },
+    { id: 'twin-sprout' as HairstyleType, label: 'Winged Valkyrie Crest' },
+    { id: 'fluffy-bob' as HairstyleType, label: 'Royal Plume Helm' },
+    { id: 'braided-crown' as HairstyleType, label: 'Horned Dragoon Visor' },
+    { id: 'mushroom-beret' as HairstyleType, label: 'Arcane Hood & Mask' },
+    { id: 'sun-halo' as HairstyleType, label: 'Radiant Archon Halo' },
   ],
   hairColors: [
-    { hex: '#3d9943', label: 'Emerald Leaf' },
-    { hex: '#c85a32', label: 'Autumn Auburn' },
-    { hex: '#2b2d42', label: 'Midnight Berry' },
-    { hex: '#ffd166', label: 'Sunbeam Blonde' },
-    { hex: '#ff8fa3', label: 'Sakura Blossom' },
-    { hex: '#e2eafc', label: 'Silver Frost' },
+    { hex: '#ffd166', label: 'Solar Gold' },
+    { hex: '#38bdf8', label: 'Astral Cyan' },
+    { hex: '#f43f5e', label: 'Crimson Flame' },
+    { hex: '#c084fc', label: 'Nebula Violet' },
+    { hex: '#34d399', label: 'Emerald Aether' },
+    { hex: '#f8fafc', label: 'Starlight White' },
   ],
   facialFeatures: [
-    { id: 'cheerful' as FacialFeatureType, label: 'Rosy & Cheerful' },
-    { id: 'starry' as FacialFeatureType, label: 'Starry Eyes & Freckles' },
-    { id: 'sleepy-cozy' as FacialFeatureType, label: 'Cozy Gentle Smile' },
-    { id: 'scholar-glasses' as FacialFeatureType, label: 'Woodland Round Glasses' },
+    { id: 'cheerful' as FacialFeatureType, label: 'Azure Visor Slit' },
+    { id: 'starry' as FacialFeatureType, label: 'Twin Astral Eyes' },
+    { id: 'sleepy-cozy' as FacialFeatureType, label: 'Golden Archon Mask' },
+    { id: 'scholar-glasses' as FacialFeatureType, label: 'Tactical Rune Visor' },
   ],
   clothingStyles: [
-    { id: 'leaf-cloak' as ClothingStyleType, label: 'Emerald Leaf Cloak' },
-    { id: 'traveler-poncho' as ClothingStyleType, label: 'Woven Traveler Poncho' },
-    { id: 'sun-robe' as ClothingStyleType, label: 'Royal Sun-Weaver Mantle' },
-    { id: 'berry-overalls' as ClothingStyleType, label: 'Gardener Tunic & Scarf' },
+    { id: 'leaf-cloak' as ClothingStyleType, label: 'Astral Warden Plate' },
+    { id: 'traveler-poncho' as ClothingStyleType, label: 'Vanguard Half-Cape' },
+    { id: 'sun-robe' as ClothingStyleType, label: 'Solar Archon Regalia' },
+    { id: 'berry-overalls' as ClothingStyleType, label: 'Shadow-Stalker Cuirass' },
   ],
   clothingColors: [
-    { hex: '#2d6a4f', label: 'Forest Moss' },
-    { hex: '#e76f51', label: 'Terracotta Spice' },
-    { hex: '#457b9d', label: 'River Blue' },
-    { hex: '#9b5de5', label: 'Twilight Plum' },
-    { hex: '#f4a261', label: 'Amber Harvest' },
+    { hex: '#1e3a8a', label: 'Royal Astral Blue' },
+    { hex: '#7f1d1d', label: 'Sovereign Crimson' },
+    { hex: '#312e81', label: 'Midnight Indigo' },
+    { hex: '#0f172a', label: 'Obsidian Night' },
+    { hex: '#b45309', label: 'Sunforged Amber' },
   ],
 };
 
 export const DEFAULT_CUSTOMIZATION: CharacterCustomization = {
   bodyType: 'sprout',
-  skinColor: '#8fd14f',
+  skinColor: '#cbd5e1',
   hairstyle: 'twin-sprout',
-  hairColor: '#3d9943',
+  hairColor: '#ffd166',
   facialFeature: 'cheerful',
   clothing: 'leaf-cloak',
-  clothingColor: '#2d6a4f',
+  clothingColor: '#1e3a8a',
 };
 
 // ============================================================================
@@ -187,7 +412,19 @@ export const GAME_CONSTANTS = {
   PLAYER_DASH_DURATION: 0.24,
   PLAYER_DASH_COOLDOWN: 0.95,
   PLAYER_SPIN_COOLDOWN: 3.4,
+  PLAYER_PARRY_WINDOW: 0.32,
+  PLAYER_PARRY_COOLDOWN: 1.1,
+  PLAYER_PARRY_SUCCESS_COOLDOWN: 0.35,
+  PARRY_COUNTER_WINDOW_SEC: 3.5,
+  PARRY_STAMINA_BUFF_SEC: 5.0,
+  PARRY_BASE_STAMINA_COST: 14,
+  DASH_BASE_STAMINA_COST: 22,
+  SPIN_BASE_STAMINA_COST: 28,
+  PARRY_SHOCKWAVE_RADIUS: 4.8,
+  PARRY_DEFLECT_RADIUS: 3.6,
+  PARRY_STAGGER_DURATION: 2.2,
   PLAYER_COMBO_WINDOW: 0.95,
+  COMBO_WINDOW_SEC: 0.95,
   INVULNERABILITY_AFTER_HIT: 1.25,
   ATTACK_RADIUS: 2.65,
   SPIN_RADIUS: 5.0,
@@ -200,20 +437,44 @@ export const GAME_CONSTANTS = {
 };
 
 /**
+ * Computes effective stamina cost, applying a 50% reduction while the
+ * Parry Counter-Attack / Astral Flow stamina buff is active.
+ */
+export function getEffectiveStaminaCost(baseCost: number, staminaBuffRemaining: number = 0): number {
+  if (staminaBuffRemaining > 0) {
+    return Math.ceil(baseCost * 0.5);
+  }
+  return baseCost;
+}
+
+/**
  * Creates initial fresh player state
  */
-export function createInitialPlayer(): PlayerStats {
+export function createInitialPlayer(mastery?: HeroMasteryState): PlayerStats {
+  const stats = computeCombatStatsFromMastery(mastery ?? DEFAULT_HERO_MASTERY);
   return {
     hp: GAME_CONSTANTS.MAX_PLAYER_HP,
     maxHp: GAME_CONSTANTS.MAX_PLAYER_HP,
+    stamina: stats.maxStamina,
+    maxStamina: stats.maxStamina,
     sunSeeds: 0,
     score: 0,
     comboCount: 0,
+    comboStep: 0,
+    comboWindowRemaining: 0,
     lastAttackTime: -999,
     dashCooldownRemaining: 0,
     spinCooldownRemaining: 0,
     isInvulnerable: false,
     invulnerableTimer: 0,
+    lastHitWasCrit: false,
+    lastDamageDealt: 0,
+    perfectDodgeCount: 0,
+    parryWindowRemaining: 0,
+    parryCooldownRemaining: 0,
+    counterWindowRemaining: 0,
+    staminaBuffRemaining: 0,
+    parrySuccessCount: 0,
   };
 }
 
@@ -282,52 +543,52 @@ export function computeDayNightState(timeOfDay: number): DayNightEnvironmentStat
   const t = ((timeOfDay % 1) + 1) % 1;
 
   if (t < 0.2) {
-    // Dawn
+    // Crimson-Gold Mythic Dawn
     return {
       timeOfDay: t,
       phase: 'dawn',
-      sunIntensity: 1.05,
-      hemiIntensity: 0.85,
-      lanternGlowIntensity: 0.4,
-      skyHex: 0xf4c29f,
-      fogHex: 0xe8b89a,
-      sunColorHex: 0xffd199,
+      sunIntensity: 1.25,
+      hemiIntensity: 0.78,
+      lanternGlowIntensity: 0.65,
+      skyHex: 0x1e1b2e,
+      fogHex: 0x261f33,
+      sunColorHex: 0xfbbf24,
     };
   } else if (t < 0.55) {
-    // Sunny Day
+    // High-Contrast Heroic Zenith
     return {
       timeOfDay: t,
       phase: 'day',
-      sunIntensity: 1.45,
-      hemiIntensity: 0.98,
-      lanternGlowIntensity: 0.1,
-      skyHex: 0x9bd0a3,
-      fogHex: 0xa7d8ad,
-      sunColorHex: 0xfff1cf,
+      sunIntensity: 1.55,
+      hemiIntensity: 0.88,
+      lanternGlowIntensity: 0.35,
+      skyHex: 0x162436,
+      fogHex: 0x1b2b40,
+      sunColorHex: 0xfef3c7,
     };
   } else if (t < 0.75) {
-    // Golden Sunset Dusk
+    // Blood-Amber Eclipse Dusk
     return {
       timeOfDay: t,
       phase: 'sunset',
-      sunIntensity: 1.0,
-      hemiIntensity: 0.72,
-      lanternGlowIntensity: 0.9,
-      skyHex: 0xd97f6c,
-      fogHex: 0xc97a6b,
-      sunColorHex: 0xff9e66,
+      sunIntensity: 1.15,
+      hemiIntensity: 0.68,
+      lanternGlowIntensity: 1.1,
+      skyHex: 0x2a1421,
+      fogHex: 0x331826,
+      sunColorHex: 0xf97316,
     };
   } else {
-    // Starry Cozy Night
+    // Abyssal Starlight Night
     return {
       timeOfDay: t,
       phase: 'night',
-      sunIntensity: 0.42,
-      hemiIntensity: 0.48,
-      lanternGlowIntensity: 1.6,
-      skyHex: 0x1b2d48,
-      fogHex: 0x1f3352,
-      sunColorHex: 0x90b4f8,
+      sunIntensity: 0.62,
+      hemiIntensity: 0.52,
+      lanternGlowIntensity: 1.75,
+      skyHex: 0x090d16,
+      fogHex: 0x0d1322,
+      sunColorHex: 0x38bdf8,
     };
   }
 }
@@ -404,29 +665,139 @@ export function isPointInCone(
 }
 
 /**
- * Calculates attack damage and updates combo step
+ * Calculates 3-hit combo chain, critical strike multiplier, weapon reach,
+ * and Empowered Riposte Counter-Attack bonus when counterWindowRemaining > 0.
  */
 export function resolvePlayerAttack(
   currentTime: number,
   currentCombo: number,
-  lastAttackTime: number
-): { combo: number; damage: number; isFinisher: boolean } {
+  lastAttackTime: number,
+  mastery?: HeroMasteryState,
+  counterWindowRemaining: number = 0
+): {
+  combo: number;
+  damage: number;
+  isFinisher: boolean;
+  isCrit: boolean;
+  isRiposte: boolean;
+  reachMultiplier: number;
+  radiusBonus: number;
+} {
   const isWithinWindow = currentTime - lastAttackTime <= GAME_CONSTANTS.PLAYER_COMBO_WINDOW;
   const nextCombo = isWithinWindow ? (currentCombo % 3) + 1 : 1;
+  const stats = computeCombatStatsFromMastery(mastery ?? DEFAULT_HERO_MASTERY);
+  const isRiposte = counterWindowRemaining > 0;
 
-  let damage = 1;
+  let baseDamage = 1;
   let isFinisher = false;
 
   if (nextCombo === 1) {
-    damage = 1;
+    baseDamage = 1.0;
   } else if (nextCombo === 2) {
-    damage = 1.25;
+    baseDamage = 1.2;
   } else {
-    damage = 2.5;
+    baseDamage = 2.5;
     isFinisher = true;
   }
 
-  return { combo: nextCombo, damage, isFinisher };
+  // Deterministic-friendly critical hit roll (finisher has +15% bonus crit chance; Riposte guarantees crit)
+  const effectiveCritChance = isFinisher ? Math.min(0.9, stats.critChance + 0.15) : stats.critChance;
+  const pseudoRoll = Math.abs(Math.sin(currentTime * 19.73 + nextCombo * 4.13));
+  const isCrit = isRiposte || (mastery ? pseudoRoll < effectiveCritChance : false);
+  const riposteBonusMult = isRiposte ? 1.65 : 1.0;
+  const rawDamage =
+    baseDamage * stats.damageMultiplier * (isCrit ? stats.critMultiplier : 1.0) * riposteBonusMult;
+  const damage = Math.round(rawDamage * 100) / 100;
+  const reachMult =
+    stats.reachMultiplier * (isFinisher ? 1.25 : 1.0) * (isRiposte ? 1.35 : 1.0);
+
+  return {
+    combo: nextCombo,
+    damage,
+    isFinisher,
+    isCrit,
+    isRiposte,
+    reachMultiplier: reachMult,
+    radiusBonus: (isFinisher ? 0.85 : 0) + (isRiposte ? 1.1 : 0) + stats.radiusBonus,
+  };
+}
+
+/**
+ * Initiates the Astral Aegis Parry stance if off cooldown and stamina is sufficient.
+ * Consumes 50% less stamina if the player's staminaBuffRemaining is active.
+ */
+export function activateParryStance(
+  player: PlayerStats,
+  mastery?: HeroMasteryState
+): {
+  player: PlayerStats;
+  activated: boolean;
+  staminaSpent: number;
+} {
+  if (player.parryCooldownRemaining > 0 || player.parryWindowRemaining > 0) {
+    return { player: { ...player }, activated: false, staminaSpent: 0 };
+  }
+  const cost = getEffectiveStaminaCost(
+    GAME_CONSTANTS.PARRY_BASE_STAMINA_COST,
+    player.staminaBuffRemaining
+  );
+  if (player.stamina < cost) {
+    return { player: { ...player }, activated: false, staminaSpent: 0 };
+  }
+  const stats = computeCombatStatsFromMastery(mastery ?? DEFAULT_HERO_MASTERY);
+  return {
+    player: {
+      ...player,
+      stamina: Math.max(0, player.stamina - cost),
+      parryWindowRemaining: GAME_CONSTANTS.PLAYER_PARRY_WINDOW,
+      parryCooldownRemaining: GAME_CONSTANTS.PLAYER_PARRY_COOLDOWN * stats.cooldownMultiplier,
+    },
+    activated: true,
+    staminaSpent: cost,
+  };
+}
+
+/**
+ * Resolves a successful timed parry deflection:
+ * - Grants instant AoE shockwave damage & stagger parameters
+ * - Refunds +25 stamina on the spot
+ * - Activates a 5.0s 50% stamina cost reduction buff (staminaBuffRemaining)
+ * - Opens a 3.5s Counter-Attack Riposte window (counterWindowRemaining)
+ * - Resets parry cooldown to 0.35s for rapid multi-parry skill expression
+ */
+export function resolveParrySuccess(
+  player: PlayerStats,
+  mastery?: HeroMasteryState
+): {
+  player: PlayerStats;
+  shockwaveDamage: number;
+  shockwaveRadius: number;
+  staggerDuration: number;
+  staminaRefunded: number;
+} {
+  const stats = computeCombatStatsFromMastery(mastery ?? DEFAULT_HERO_MASTERY);
+  const staminaRefunded = 25;
+  const shockwaveDamage = Math.round(1.85 * stats.damageMultiplier * 100) / 100;
+  const shockwaveRadius = GAME_CONSTANTS.PARRY_SHOCKWAVE_RADIUS + stats.radiusBonus;
+
+  return {
+    player: {
+      ...player,
+      stamina: Math.min(player.maxStamina, player.stamina + staminaRefunded),
+      parryWindowRemaining: 0,
+      parryCooldownRemaining: GAME_CONSTANTS.PLAYER_PARRY_SUCCESS_COOLDOWN,
+      counterWindowRemaining: GAME_CONSTANTS.PARRY_COUNTER_WINDOW_SEC,
+      staminaBuffRemaining: GAME_CONSTANTS.PARRY_STAMINA_BUFF_SEC,
+      isInvulnerable: true,
+      invulnerableTimer: Math.max(player.invulnerableTimer, 0.55),
+      parrySuccessCount: (player.parrySuccessCount || 0) + 1,
+      score: player.score + 180,
+    },
+    shockwaveDamage,
+    shockwaveRadius,
+    staggerDuration: GAME_CONSTANTS.PARRY_STAGGER_DURATION,
+    staminaRefunded,
+  };
 }
 
 /**
@@ -436,7 +807,7 @@ export function applyDamageToPlayer(
   player: PlayerStats,
   damageAmount: number
 ): { player: PlayerStats; tookDamage: boolean } {
-  if (player.isInvulnerable || player.hp <= 0) {
+  if (player.isInvulnerable || player.hp <= 0 || player.parryWindowRemaining > 0) {
     return { player: { ...player }, tookDamage: false };
   }
 
@@ -453,18 +824,39 @@ export function applyDamageToPlayer(
 }
 
 /**
- * Ticks player invulnerability and cooldown timers
+ * Ticks player invulnerability, stamina regeneration, combo window, parry & buff timers
  */
-export function tickPlayerTimers(player: PlayerStats, dt: number, dashMultiplier = 1.0): PlayerStats {
+export function tickPlayerTimers(
+  player: PlayerStats,
+  dt: number,
+  dashMultiplier = 1.0,
+  staminaRegenRate = 28
+): PlayerStats {
   const dashCooldown = Math.max(0, player.dashCooldownRemaining - dt * dashMultiplier);
-  const spinCooldown = Math.max(0, player.spinCooldownRemaining - dt);
+  const spinCooldown = Math.max(0, player.spinCooldownRemaining - dt * dashMultiplier);
+  const parryCooldown = Math.max(0, (player.parryCooldownRemaining || 0) - dt * dashMultiplier);
+  const parryWindow = Math.max(0, (player.parryWindowRemaining || 0) - dt);
+  const counterWindow = Math.max(0, (player.counterWindowRemaining || 0) - dt);
+  const staminaBuff = Math.max(0, (player.staminaBuffRemaining || 0) - dt);
   const invulnerableTimer = Math.max(0, player.invulnerableTimer - dt);
   const isInvulnerable = invulnerableTimer > 0;
+  // Regenerate stamina 30% faster while Astral Flow stamina buff is active
+  const effRegen = staminaRegenRate * (staminaBuff > 0 ? 1.3 : 1.0);
+  const nextStamina = Math.min(player.maxStamina, player.stamina + dt * effRegen);
+  const nextComboWindow = Math.max(0, player.comboWindowRemaining - dt);
+  const nextComboStep = nextComboWindow > 0 ? player.comboStep : 0;
 
   return {
     ...player,
+    stamina: nextStamina,
+    comboWindowRemaining: nextComboWindow,
+    comboStep: nextComboStep,
     dashCooldownRemaining: dashCooldown,
     spinCooldownRemaining: spinCooldown,
+    parryCooldownRemaining: parryCooldown,
+    parryWindowRemaining: parryWindow,
+    counterWindowRemaining: counterWindow,
+    staminaBuffRemaining: staminaBuff,
     invulnerableTimer,
     isInvulnerable,
   };
@@ -475,7 +867,8 @@ export function tickPlayerTimers(player: PlayerStats, dt: number, dashMultiplier
  */
 export function damageEnemy(
   enemy: EnemyState,
-  damage: number
+  damage: number,
+  stunDuration: number = 0.35
 ): { enemy: EnemyState; wasCleansed: boolean } {
   if (enemy.state === 'cleansed') {
     return { enemy: { ...enemy }, wasCleansed: false };
@@ -489,7 +882,7 @@ export function damageEnemy(
       ...enemy,
       hp: newHp,
       state: wasCleansed ? 'cleansed' : 'stunned',
-      timer: wasCleansed ? 1.0 : 0.35,
+      timer: wasCleansed ? 1.0 : stunDuration,
     },
     wasCleansed,
   };
@@ -996,188 +1389,188 @@ export interface StageBiomeTheme {
 const STAGE_BIOMES: StageBiomeTheme[] = [
   {
     id: 'emerald-meadow',
-    nameFa: 'بیشه زمردین آفتابی',
-    nameEn: 'Sunlit Emerald Glade',
-    meadowHex: 0x52b788,
-    mossHex: 0x2d6a4f,
-    trailHex: 0xe6ccb2,
-    pondBedHex: 0x48cae4,
-    cliffHex: 0x344e41,
-    plazaHex: 0xe6ccb2,
-    canopyPrimaryHex: 0x2d6a4f,
-    canopySecondaryHex: 0x52b788,
-    trunkHex: 0x4a2e1b,
-    mountainPrimaryHex: 0x2d5a40,
-    mountainSecondaryHex: 0x40916c,
-    waterHex: 0x48cae4,
-    waterEmissiveHex: 0x0077b6,
-    lilyHex: 0x52b788,
-    lotusHex: 0xffb3c6,
-    flowerPalette: [0xffd166, 0xef476f, 0x06d6a0, 0x118ab2, 0xffa07a, 0xffffff],
-    grassPalette: [0x70e000, 0x52b788, 0x38b000],
-    fernPalette: [0x2d6a4f, 0x40916c],
-    crystalPalette: [0x48cae4, 0x06d6a0, 0xffd166],
-    fireflyPrimaryHex: 0xffe66d,
-    fireflySecondaryHex: 0x80ffdb,
-    sunbeamHex: 0xfff3b0,
-    pufferCapHex: 0xef476f,
-    pufferSpotHex: 0xfff3b0,
-    rollerShellHex: 0x582f0e,
-    rollerGlowHex: 0xff9f1c,
-    spriteBodyHex: 0x7209b7,
-    spriteWingHex: 0x80ffdb,
-    bossBarkHex: 0x3a2314,
-    bossCrownHex: 0x2d6a4f,
-    bossCoreHex: 0x9d4edd,
-    bossShieldHex: 0x9d4edd,
+    nameFa: 'معبد ابسیدین و خرابه‌های زمردین',
+    nameEn: 'Obsidian Sanctum & Emerald Ley-Ruins',
+    meadowHex: 0x1b2e28,
+    mossHex: 0x111f1b,
+    trailHex: 0x92400e,
+    pondBedHex: 0x0891b2,
+    cliffHex: 0x0f172a,
+    plazaHex: 0x334155,
+    canopyPrimaryHex: 0x134e4a,
+    canopySecondaryHex: 0x0f766e,
+    trunkHex: 0x1e293b,
+    mountainPrimaryHex: 0x0f172a,
+    mountainSecondaryHex: 0x1e293b,
+    waterHex: 0x06b6d4,
+    waterEmissiveHex: 0x0284c7,
+    lilyHex: 0x0d9488,
+    lotusHex: 0xfbbf24,
+    flowerPalette: [0xfbbf24, 0x38bdf8, 0x10b981, 0xf59e0b, 0x2dd4bf, 0xe2e8f0],
+    grassPalette: [0x115e59, 0x0f766e, 0x134e4a],
+    fernPalette: [0x0f766e, 0x1e293b],
+    crystalPalette: [0x38bdf8, 0x10b981, 0xfbbf24],
+    fireflyPrimaryHex: 0xfbbf24,
+    fireflySecondaryHex: 0x38bdf8,
+    sunbeamHex: 0x38bdf8,
+    pufferCapHex: 0xbe123c,
+    pufferSpotHex: 0x38bdf8,
+    rollerShellHex: 0x1e293b,
+    rollerGlowHex: 0xf59e0b,
+    spriteBodyHex: 0x4c1d95,
+    spriteWingHex: 0x38bdf8,
+    bossBarkHex: 0x0f172a,
+    bossCrownHex: 0xf59e0b,
+    bossCoreHex: 0xef4444,
+    bossShieldHex: 0x38bdf8,
   },
   {
     id: 'sakura-valley',
-    nameFa: 'دره شکوفه‌های ساکورا و مهتاب',
-    nameEn: 'Sakura Blossom Sanctuary',
-    meadowHex: 0x95d5b2,
-    mossHex: 0xf4a2bd,
-    trailHex: 0xfde2e4,
-    pondBedHex: 0xcdb4db,
-    cliffHex: 0x6d597a,
-    plazaHex: 0xfcefb4,
-    canopyPrimaryHex: 0xff8fa3,
-    canopySecondaryHex: 0xffb3c6,
-    trunkHex: 0x5e3023,
-    mountainPrimaryHex: 0x6d597a,
-    mountainSecondaryHex: 0xb56576,
-    waterHex: 0xbde0fe,
-    waterEmissiveHex: 0x9d4edd,
-    lilyHex: 0x74c69d,
-    lotusHex: 0xff4d6d,
-    flowerPalette: [0xff8fa3, 0xffb3c6, 0xcdb4db, 0xffe5ec, 0xffd166, 0xffffff],
-    grassPalette: [0x95d5b2, 0xffcad4, 0x74c69d],
-    fernPalette: [0xb56576, 0x52b788],
-    crystalPalette: [0xff8fa3, 0xcdb4db, 0x90e0ef],
-    fireflyPrimaryHex: 0xffb3c6,
-    fireflySecondaryHex: 0xffe66d,
-    sunbeamHex: 0xffe5ec,
-    pufferCapHex: 0xff758f,
-    pufferSpotHex: 0xffffff,
-    rollerShellHex: 0x6d597a,
-    rollerGlowHex: 0xff4d6d,
-    spriteBodyHex: 0xb5179e,
-    spriteWingHex: 0xffcad4,
-    bossBarkHex: 0x4a2545,
-    bossCrownHex: 0xff8fa3,
-    bossCoreHex: 0xff4d6d,
-    bossShieldHex: 0xf72585,
+    nameFa: 'دژ ماه خونین و تالارهای سرخ',
+    nameEn: 'Blood-Moon Sovereign Bastion',
+    meadowHex: 0x261724,
+    mossHex: 0x180e18,
+    trailHex: 0x7f1d1d,
+    pondBedHex: 0x9d174d,
+    cliffHex: 0x140a14,
+    plazaHex: 0x3b1d2e,
+    canopyPrimaryHex: 0x881337,
+    canopySecondaryHex: 0xbe123c,
+    trunkHex: 0x1c1917,
+    mountainPrimaryHex: 0x180e18,
+    mountainSecondaryHex: 0x3b1d2e,
+    waterHex: 0xe11d48,
+    waterEmissiveHex: 0x9f1239,
+    lilyHex: 0x4c1d95,
+    lotusHex: 0xfbbf24,
+    flowerPalette: [0xf43f5e, 0xfbbf24, 0xc084fc, 0xfb7185, 0xf59e0b, 0xe2e8f0],
+    grassPalette: [0x4c0519, 0x881337, 0x3b0764],
+    fernPalette: [0x881337, 0x3b1d2e],
+    crystalPalette: [0xf43f5e, 0xc084fc, 0xfbbf24],
+    fireflyPrimaryHex: 0xf43f5e,
+    fireflySecondaryHex: 0xfbbf24,
+    sunbeamHex: 0xfda4af,
+    pufferCapHex: 0xe11d48,
+    pufferSpotHex: 0xfbbf24,
+    rollerShellHex: 0x27272a,
+    rollerGlowHex: 0xf43f5e,
+    spriteBodyHex: 0x701a75,
+    spriteWingHex: 0xf43f5e,
+    bossBarkHex: 0x18181b,
+    bossCrownHex: 0xe11d48,
+    bossCoreHex: 0xf43f5e,
+    bossShieldHex: 0xc084fc,
   },
   {
     id: 'amber-autumn',
-    nameFa: 'جنگل پاییزی کهربایی و شب‌تاب',
-    nameEn: 'Amber Autumn Lantern Grove',
-    meadowHex: 0xd4a373,
-    mossHex: 0xbc6c25,
-    trailHex: 0xfaedcd,
-    pondBedHex: 0x2ec4b6,
-    cliffHex: 0x603808,
-    plazaHex: 0xfefae0,
-    canopyPrimaryHex: 0xe76f51,
-    canopySecondaryHex: 0xf4a261,
-    trunkHex: 0x3d2314,
-    mountainPrimaryHex: 0x7f4f24,
-    mountainSecondaryHex: 0xb07d62,
-    waterHex: 0x2ec4b6,
-    waterEmissiveHex: 0x0f4c5c,
-    lilyHex: 0xe9c46a,
-    lotusHex: 0xff9f1c,
-    flowerPalette: [0xff9f1c, 0xe76f51, 0xe9c46a, 0x06d6a0, 0xffd166, 0xf4a261],
-    grassPalette: [0xe9c46a, 0xf4a261, 0x90be6d],
-    fernPalette: [0xbc6c25, 0xdddf00],
-    crystalPalette: [0xff9f1c, 0x2ec4b6, 0xffd166],
-    fireflyPrimaryHex: 0xff9f1c,
-    fireflySecondaryHex: 0x06d6a0,
-    sunbeamHex: 0xffd166,
-    pufferCapHex: 0xf77f00,
-    pufferSpotHex: 0xfefae0,
-    rollerShellHex: 0x582f0e,
-    rollerGlowHex: 0xffbe0b,
-    spriteBodyHex: 0x9b5de5,
-    spriteWingHex: 0xfee440,
-    bossBarkHex: 0x432818,
-    bossCrownHex: 0xe76f51,
-    bossCoreHex: 0xff9f1c,
-    bossShieldHex: 0xf77f00,
+    nameFa: 'کوره تایتان‌های خورشیدزاد',
+    nameEn: 'Sunforged Titan Foundry',
+    meadowHex: 0x291d12,
+    mossHex: 0x1c130b,
+    trailHex: 0xb45309,
+    pondBedHex: 0xea580c,
+    cliffHex: 0x140d07,
+    plazaHex: 0x451a03,
+    canopyPrimaryHex: 0x9a3412,
+    canopySecondaryHex: 0xd97706,
+    trunkHex: 0x1c1917,
+    mountainPrimaryHex: 0x1c130b,
+    mountainSecondaryHex: 0x451a03,
+    waterHex: 0xf97316,
+    waterEmissiveHex: 0xc2410c,
+    lilyHex: 0x78350f,
+    lotusHex: 0xfef08a,
+    flowerPalette: [0xfbbf24, 0xf97316, 0xef4444, 0x38bdf8, 0xf59e0b, 0xfef3c7],
+    grassPalette: [0x78350f, 0x92400e, 0x451a03],
+    fernPalette: [0x9a3412, 0x78350f],
+    crystalPalette: [0xfbbf24, 0xf97316, 0x38bdf8],
+    fireflyPrimaryHex: 0xfbbf24,
+    fireflySecondaryHex: 0xf97316,
+    sunbeamHex: 0xfde68a,
+    pufferCapHex: 0xea580c,
+    pufferSpotHex: 0xfef08a,
+    rollerShellHex: 0x292524,
+    rollerGlowHex: 0xfbbf24,
+    spriteBodyHex: 0x7c2d12,
+    spriteWingHex: 0xfbbf24,
+    bossBarkHex: 0x1c1917,
+    bossCrownHex: 0xf97316,
+    bossCoreHex: 0xfbbf24,
+    bossShieldHex: 0xf97316,
   },
   {
     id: 'frost-aurora',
-    nameFa: 'بلورزار یخی و شفق قطبی',
-    nameEn: 'Aurora Frostveil Basin',
-    meadowHex: 0xa8dadc,
-    mossHex: 0x457b9d,
-    trailHex: 0xf1faee,
-    pondBedHex: 0x00b4d8,
-    cliffHex: 0x1d3557,
-    plazaHex: 0xe0fbfc,
-    canopyPrimaryHex: 0x48cae4,
-    canopySecondaryHex: 0xade8f4,
-    trunkHex: 0x3d5a80,
-    mountainPrimaryHex: 0x1d3557,
-    mountainSecondaryHex: 0x457b9d,
-    waterHex: 0x90e0ef,
-    waterEmissiveHex: 0x00b4d8,
-    lilyHex: 0x80ffdb,
-    lotusHex: 0xe0aaff,
-    flowerPalette: [0x90e0ef, 0x80ffdb, 0xe0aaff, 0xffffff, 0x48cae4, 0xffd166],
-    grassPalette: [0xade8f4, 0x80ffdb, 0x90e0ef],
-    fernPalette: [0x457b9d, 0x48cae4],
-    crystalPalette: [0x80ffdb, 0x48cae4, 0xe0aaff],
-    fireflyPrimaryHex: 0x80ffdb,
-    fireflySecondaryHex: 0xe0aaff,
-    sunbeamHex: 0xcaf0f8,
-    pufferCapHex: 0x00b4d8,
-    pufferSpotHex: 0xffffff,
-    rollerShellHex: 0x1d3557,
-    rollerGlowHex: 0x80ffdb,
-    spriteBodyHex: 0x3a0ca3,
-    spriteWingHex: 0x72efdd,
-    bossBarkHex: 0x1d3557,
-    bossCrownHex: 0x80ffdb,
-    bossCoreHex: 0x00f5d4,
-    bossShieldHex: 0x48cae4,
+    nameFa: 'مناره یخ‌بندان شفق قطبی',
+    nameEn: 'Glacial Borealis Spire',
+    meadowHex: 0x152238,
+    mossHex: 0x0f172a,
+    trailHex: 0x0369a1,
+    pondBedHex: 0x0284c7,
+    cliffHex: 0x090d16,
+    plazaHex: 0x1e293b,
+    canopyPrimaryHex: 0x0284c7,
+    canopySecondaryHex: 0x38bdf8,
+    trunkHex: 0x0f172a,
+    mountainPrimaryHex: 0x090d16,
+    mountainSecondaryHex: 0x1e293b,
+    waterHex: 0x38bdf8,
+    waterEmissiveHex: 0x0284c7,
+    lilyHex: 0x0369a1,
+    lotusHex: 0x2dd4bf,
+    flowerPalette: [0x38bdf8, 0x2dd4bf, 0x818cf8, 0xf8fafc, 0x0ea5e9, 0xfbbf24],
+    grassPalette: [0x1e3a8a, 0x0c4a6e, 0x164e63],
+    fernPalette: [0x0369a1, 0x1e293b],
+    crystalPalette: [0x38bdf8, 0x2dd4bf, 0x818cf8],
+    fireflyPrimaryHex: 0x38bdf8,
+    fireflySecondaryHex: 0x2dd4bf,
+    sunbeamHex: 0xbae6fd,
+    pufferCapHex: 0x0284c7,
+    pufferSpotHex: 0x2dd4bf,
+    rollerShellHex: 0x0f172a,
+    rollerGlowHex: 0x38bdf8,
+    spriteBodyHex: 0x1e1b4b,
+    spriteWingHex: 0x2dd4bf,
+    bossBarkHex: 0x090d16,
+    bossCrownHex: 0x38bdf8,
+    bossCoreHex: 0x2dd4bf,
+    bossShieldHex: 0x38bdf8,
   },
   {
     id: 'astral-oasis',
-    nameFa: 'واحه کیهانی ستارگان',
-    nameEn: 'Astral Starlight Orchard',
-    meadowHex: 0x3c096c,
-    mossHex: 0x240046,
-    trailHex: 0xe0aaff,
-    pondBedHex: 0x4cc9f0,
-    cliffHex: 0x10002b,
-    plazaHex: 0xc77dff,
-    canopyPrimaryHex: 0x7209b7,
-    canopySecondaryHex: 0x4cc9f0,
-    trunkHex: 0x240046,
-    mountainPrimaryHex: 0x240046,
-    mountainSecondaryHex: 0x5a189a,
-    waterHex: 0x4cc9f0,
-    waterEmissiveHex: 0x7209b7,
-    lilyHex: 0x72efdd,
-    lotusHex: 0xffe66d,
-    flowerPalette: [0xffe66d, 0x4cc9f0, 0xf72585, 0x72efdd, 0xe0aaff, 0xffffff],
-    grassPalette: [0x9d4edd, 0x4cc9f0, 0x72efdd],
-    fernPalette: [0x5a189a, 0x4361ee],
-    crystalPalette: [0xffe66d, 0xf72585, 0x4cc9f0],
-    fireflyPrimaryHex: 0xffe66d,
-    fireflySecondaryHex: 0xf72585,
-    sunbeamHex: 0xe0aaff,
-    pufferCapHex: 0xf72585,
-    pufferSpotHex: 0xffe66d,
-    rollerShellHex: 0x3c096c,
-    rollerGlowHex: 0x4cc9f0,
-    spriteBodyHex: 0x4cc9f0,
-    spriteWingHex: 0xffe66d,
-    bossBarkHex: 0x240046,
-    bossCrownHex: 0x4cc9f0,
-    bossCoreHex: 0xf72585,
-    bossShieldHex: 0x4cc9f0,
+    nameFa: 'کانون خلأ اختران و ستارگان',
+    nameEn: 'Celestial Void Nexus',
+    meadowHex: 0x160d29,
+    mossHex: 0x0b0518,
+    trailHex: 0x6d28d9,
+    pondBedHex: 0x38bdf8,
+    cliffHex: 0x070312,
+    plazaHex: 0x2e1065,
+    canopyPrimaryHex: 0x5b21b6,
+    canopySecondaryHex: 0x0284c7,
+    trunkHex: 0x0f172a,
+    mountainPrimaryHex: 0x090414,
+    mountainSecondaryHex: 0x2e1065,
+    waterHex: 0x38bdf8,
+    waterEmissiveHex: 0x6d28d9,
+    lilyHex: 0x4c1d95,
+    lotusHex: 0xfbbf24,
+    flowerPalette: [0xfbbf24, 0x38bdf8, 0xf43f5e, 0x2dd4bf, 0xc084fc, 0xffffff],
+    grassPalette: [0x3b0764, 0x1e1b4b, 0x311042],
+    fernPalette: [0x4c1d95, 0x1e3a8a],
+    crystalPalette: [0xfbbf24, 0xf43f5e, 0x38bdf8],
+    fireflyPrimaryHex: 0xfbbf24,
+    fireflySecondaryHex: 0x38bdf8,
+    sunbeamHex: 0xc084fc,
+    pufferCapHex: 0xe11d48,
+    pufferSpotHex: 0xfbbf24,
+    rollerShellHex: 0x1e1b4b,
+    rollerGlowHex: 0x38bdf8,
+    spriteBodyHex: 0x0284c7,
+    spriteWingHex: 0xfbbf24,
+    bossBarkHex: 0x090414,
+    bossCrownHex: 0x38bdf8,
+    bossCoreHex: 0xf43f5e,
+    bossShieldHex: 0x38bdf8,
   },
 ];
 
@@ -2321,60 +2714,60 @@ export function getInGameStoryBeat(
           id: 'chapter_start',
           stepIndex: 1,
           totalSteps: 4,
-          speakerFa: 'روح بلوط کهنسال',
-          speakerEn: 'Elder Oak Spirit',
-          textFa: `«ای جوانه نگهبان! در ${biome.nameFa} نیازی به روشن کردن نیایشگاه‌ها نیست؛ ۳ جوانه کوچک در قفس‌های خاردار اسیر شده‌اند! قفس‌هایشان را بشکن تا پشت سرت به کلبه امن بیایند.»`,
-          textEn: `"Little Guardian! In ${biome.nameEn}, 3 baby Sproutlings are trapped in thorny cages! Break their cages and escort them back to your Safe Cottage!"`,
-          hintFa: 'هدف مرحله ۱: ۳ قفس خاردار را بشکنید و جوانه‌ها را به حیاط کلبه امن ببرید.',
-          hintEn: 'Stage 1 Goal: Break 3 Bramble Cages and escort the Sproutlings to the Safe Cottage.',
+          speakerFa: 'فرمانده محفل اخترتاب',
+          speakerEn: 'High Arbiter of Aethelgard',
+          textFa: `«ای کایلن، جنگجوی اخترتاب! در ${biome.nameFa}، سه نگهبان در قفس‌های رونیک سایه به اسارت درآمده‌اند. مهرهای زندان را با سلاح خود درهم بشکن و آن‌ها را تا دژ مقدس اسکورت کن!»`,
+          textEn: `"Kaelen, Warden of the Astral Blade! In ${biome.nameEn}, three allied Wardens are bound inside Void Seals. Shatter their prisons and escort them safely to the Citadel!"`,
+          hintFa: 'فرمان مرحله ۱: ۳ قفس رونیک را با سلاح خود بشکنید و نگهبانان را به دژ امن هدایت کنید.',
+          hintEn: 'Tactical Objective: Shatter 3 Void Cages and escort the Wardens to the Citadel.',
         };
       case 'harmonic_bells':
         return {
           id: 'chapter_start',
           stepIndex: 1,
           totalSteps: 4,
-          speakerFa: 'مرغ نغمه‌خوان ساکورا',
-          speakerEn: 'Sakura Songbird',
-          textFa: `«به ${biome.nameFa} خوش آمدی! در این دره، از دالان‌های باد صورتی عبور کن و ۴ زنگوله باستانی را به صدا درآور تا پل‌های بلورین به سوی معبد مرکزی روشن شوند!»`,
-          textEn: `"Welcome to ${biome.nameEn}! Glide through the pink wind-streams and ring all 4 Ancient Chime Bells to illuminate the crystal bridges to the central Pavilion!"`,
-          hintFa: 'هدف مرحله ۲: ۴ زنگوله باستانی را با ضربه یا کلید E بنوازید و وارد معبد مرکزی شوید.',
-          hintEn: 'Stage 2 Goal: Ring 4 Ancient Chime Bells [Space/E] and step into the central Pavilion.',
+          speakerFa: 'ارباب طنین ساکورا',
+          speakerEn: 'Grand Archon of Resonance',
+          textFa: `«به قلمرو ${biome.nameFa} گام نهادی! از جریان‌های باد اخترتاب برای شتاب نبرد استفاده کن و ۴ ناقوس باستانی را به صدا درآور تا پل‌های بلورین تالار مرکزی بازگشایی شوند!»`,
+          textEn: `"You enter ${biome.nameEn}! Harness the Astral Wind-Streams and strike all 4 Ancient Resonance Bells to forge the crystal bridges toward the Grand Sanctum!"`,
+          hintFa: 'فرمان مرحله ۲: ۴ ناقوس تشدید را با ضربه سلاح [Space/E] فعال کرده و وارد تالار مرکزی شوید.',
+          hintEn: 'Tactical Objective: Strike 4 Resonance Bells [Space/E] and claim the central Sanctum.',
         };
       case 'heart_tree_defense':
         return {
           id: 'chapter_start',
           stepIndex: 1,
           totalSteps: 4,
-          speakerFa: 'بانوی کرم‌های شب‌تاب',
-          speakerEn: 'Lady of the Fireflies',
-          textFa: `«در مرکز ${biome.nameFa}، درخت قلب کهربایی هدف ۳ موج از مهاجمان قرار گرفته است! در کنار درخت بمان، توتم‌های موج نوری را فعال کن و مهاجمان را دفع کن!»`,
-          textEn: `"At the heart of ${biome.nameEn}, the Amber Heart-Tree faces 3 waves of rollers! Guard the tree and strike the Golden Pulse Totems to unleash healing shockwaves!"`,
-          hintFa: 'هدف مرحله ۳: محافظت از درخت قلب در برابر ۳ موج کوتاه مهاجمان (۹ مهاجم).',
-          hintEn: 'Stage 3 Goal: Defend the central Heart-Tree across 3 short waves (9 critters).',
+          speakerFa: 'نگهبان ارشد کهربا',
+          speakerEn: 'Vanguard Sentinel',
+          textFa: `«در قلب ${biome.nameFa}، درخت باستانی اخترتاب زیر هجوم ۳ لشکر از زره‌پوشان سایه قرار دارد! با زنجیره کمبوی ۳-ضربه‌ای و فعال‌سازی ستون‌های شوک طلایی، محاصره را بشکن!»`,
+          textEn: `"At the heart of ${biome.nameEn}, the World-Tree faces 3 assault waves of Void Vanguards! Unleash 3-hit combos and trigger the Golden Shockwave Obelisks to hold the line!"`,
+          hintFa: 'فرمان مرحله ۳: دفاع از هسته باستانی در برابر ۳ موج تهاجمی دشمنان.',
+          hintEn: 'Tactical Objective: Defend the World-Tree Core across 3 Void Vanguard assault waves.',
         };
       case 'meteor_rush':
         return {
           id: 'chapter_start',
           stepIndex: 1,
           totalSteps: 4,
-          speakerFa: 'گوزن بلورین شفق',
-          speakerEn: 'Frost-Crystal Stag',
-          textFa: `«آسمان ${biome.nameFa} غرق در شهاب‌باران است! روی سکوهای یخی شتاب‌دهنده بپر و ۶ شهاب‌سنگ ستاره‌ای را پیش از آنکه درخشش آن‌ها در برف خاموش شود جمع کن!»`,
-          textEn: `"Starlight Meteors are falling across ${biome.nameEn}! Dash over the icy Aurora Boost Pads and catch 6 glowing meteors before their light fades!"`,
-          hintFa: 'هدف مرحله ۴: جذب ۶ شهاب‌سنگ درخشان در زمان محدود با کمک سکوهای سرعت.',
-          hintEn: 'Stage 4 Goal: Catch 6 falling Starlight Meteors before their timers expire.',
+          speakerFa: 'ستاره‌شناس شفق قطبی',
+          speakerEn: 'Oracle of the Frostveil',
+          textFa: `«آسمان ${biome.nameFa} شکافته شده و شهاب‌سنگ‌های اخترتاب در حال سقوط‌اند! با جاخالی تاکتیکی از روی سکوهای شتاب عبور کن و ۶ هسته اخترتاب را پیش از فروپاشی مهار کن!»`,
+          textEn: `"Astral Meteorites are plummeting across ${biome.nameEn}! Surge across the Rune Boost Pads and secure 6 Astral Cores before their cosmic energy dissipates!"`,
+          hintFa: 'فرمان مرحله ۴: مهار ۶ هسته شهاب‌سنگ اخترتاب پیش از اتمام زمان.',
+          hintEn: 'Tactical Objective: Secure 6 falling Astral Meteorite Cores before time runs out.',
         };
       case 'boss_duel':
         return {
           id: 'chapter_start',
           stepIndex: 1,
           totalSteps: 4,
-          speakerFa: 'بافنده اخترتاب کیهانی',
-          speakerEn: 'Astral Sun-Weaver',
-          textFa: `«به میدان نهایی در ${biome.nameFa} رسیدی! پادشاه خارهای باستانی در مرکز میدان منتظر توست. ستون‌های تشدید اطراف را بدون نیاز به بذر فعال کن تا غول گیج و بی‌دفاع شود!»`,
-          textEn: `"You have reached the Celestial Arena of ${biome.nameEn}! Strike the Starlight Pillars (no seeds needed!) to stun the Ancient Bramble-King and cleanse him!"`,
-          hintFa: 'هدف مرحله ۵: فعال کردن ستون‌های تشدید نور و شکست دادن غول نگهبان.',
-          hintEn: 'Stage 5 Goal: Activate Starlight Pillars to stun the Boss and defeat him.',
+          speakerFa: 'فرمانده محفل اخترتاب',
+          speakerEn: 'High Arbiter of Aethelgard',
+          textFa: `«به میدان نبرد نهایی در ${biome.nameFa} رسیدی! فرمانروای سایه‌زاد در مرکز میدان ایستاده است. ستون‌های تشدید اخترتاب را فعال کن تا زره او بشکند و با ضربات بحرانی او را سرنگون کن!»`,
+          textEn: `"You stand in the Celestial Colosseum of ${biome.nameEn}! Strike the Starlight Resonance Pillars to shatter the Void Sovereign's ward and unleash critical finishers!"`,
+          hintFa: 'فرمان مرحله ۵: شکستن سپر فرمانروای سایه با ستون‌های تشدید و پیروزی در نبرد دو مرحله‌ای.',
+          hintEn: 'Tactical Objective: Shatter the Boss Ward via Resonance Pillars and defeat the Sovereign.',
         };
     }
   }
@@ -2385,24 +2778,24 @@ export function getInGameStoryBeat(
         id: 'first_seed',
         stepIndex: 2,
         totalSteps: 4,
-        speakerFa: 'پیپ (نگهبان جوانه)',
-        speakerEn: 'Pip (Grove Guardian)',
-        textFa: `«انرژی درخشان بیشه همراه من است! بیایید ماموریت ویژه این مرحله (${biome.nameFa}) را به سرانجام برسانیم!»`,
-        textEn: `"The grove's radiant energy is with me! Let's complete the special mission of ${biome.nameEn}!"`,
-        hintFa: 'پیکان طلایی پای پیپ همیشه هدف بعدی ماموریت این مرحله را نشان می‌دهد.',
-        hintEn: 'Follow the golden compass arrow at Pip’s feet to your next mission target.',
+        speakerFa: 'کایلن (نگهبان اخترتاب)',
+        speakerEn: 'Kaelen (Astral Warden)',
+        textFa: `«بلور اخترتاب جذب شد؛ نیروی رونیک در تیغه سلاحم جریان دارد! ماموریت ${biome.nameFa} را به سرانجام می‌رسانیم.»`,
+        textEn: `"Astral Shard absorbed—runic power surges through my blade! Let us conquer the trials of ${biome.nameEn}!"`,
+        hintFa: 'قطب‌نمای طلایی و ویسپ اخترتاب همیشه مسیر هدف تاکتیکی بعدی را نشان می‌دهند.',
+        hintEn: 'Follow the golden tactical compass and Runic Wisp to your next objective.',
       };
     case 'shrine_1':
       return {
         id: 'shrine_1',
         stepIndex: 2,
         totalSteps: 4,
-        speakerFa: 'پیپ (نگهبان جوانه)',
-        speakerEn: 'Pip (Grove Guardian)',
-        textFa: `«بخش اول ماموریت در ${biome.nameFa} با موفقیت انجام شد! انرژی طبیعت در حال بازگشت است.»`,
-        textEn: `"First milestone achieved in ${biome.nameEn}! Nature's harmony is returning!"`,
-        hintFa: 'به دنبال کردن پیکان راهنمای طلایی ادامه دهید.',
-        hintEn: 'Keep following the golden compass arrow to the next objective.',
+        speakerFa: 'کایلن (نگهبان اخترتاب)',
+        speakerEn: 'Kaelen (Astral Warden)',
+        textFa: `«نخستین دژ رونیک در ${biome.nameFa} بیدار شد! حلقه محاصره تاریکی در حال فروپاشی است.»`,
+        textEn: `"First Runic Obelisk awakened in ${biome.nameEn}! The shadow blockade is fracturing!"`,
+        hintFa: 'به پیشروی تاکتیکی به سوی هدف بعدی ادامه دهید.',
+        hintEn: 'Press forward to the next tactical objective.',
       };
     case 'shrine_2':
     case 'shrine_3':
@@ -2410,36 +2803,36 @@ export function getInGameStoryBeat(
         id: trigger,
         stepIndex: 3,
         totalSteps: 4,
-        speakerFa: 'روح نگهبان بیشه',
-        speakerEn: 'Grove Spirit',
-        textFa: `«بیش از نیمی از چالش ${biome.nameFa} کامل شد! فقط کمی دیگر تا پیروزی و گشوده شدن دروازه فصل بعد باقی مانده است!»`,
-        textEn: `"More than halfway through ${biome.nameEn}'s challenge! Victory is within reach!"`,
-        hintFa: 'چالش نهایی این مرحله را کامل کنید تا وارد اقلیم بعدی شوید.',
-        hintEn: 'Complete the remaining stage objective to unlock the next biome.',
+        speakerFa: 'فرمانده محفل اخترتاب',
+        speakerEn: 'High Arbiter of Aethelgard',
+        textFa: `«بیش از نیمی از خطوط دفاعی دشمن در ${biome.nameFa} درهم شکسته شد! ضربات کمبوی خود را حفظ کن!»`,
+        textEn: `"Over half of the enemy stronghold in ${biome.nameEn} has fallen! Maintain your combat momentum!"`,
+        hintFa: 'هدف نهایی این قلمرو را کامل کنید تا دروازه اقلیم بعدی گشوده شود.',
+        hintEn: 'Complete the final objective to open the Astral Gate to the next realm.',
       };
     case 'all_shrines_restored':
       return {
         id: 'all_shrines_restored',
         stepIndex: 3,
         totalSteps: 4,
-        speakerFa: 'روح نگهبان بیشه',
-        speakerEn: 'Grove Spirit',
-        textFa: `«همه اهداف فرعی ${biome.nameFa} کامل شدند! اکنون گام آخر را بردار تا این فصل به پیروزی برسد!»`,
-        textEn: `"All stage milestones in ${biome.nameEn} are complete! Take the final step to claim victory!"`,
-        hintFa: 'پیکان طلایی را به نقطه پایانی دنبال کنید.',
-        hintEn: 'Follow the golden arrow to finish the stage!',
+        speakerFa: 'فرمانده محفل اخترتاب',
+        speakerEn: 'High Arbiter of Aethelgard',
+        textFa: `«تمام ستون‌های رونیک ${biome.nameFa} فعال شدند! سپر فرمانروای سایه شکسته شد—ضربه نهایی را فرود آور!»`,
+        textEn: `"All Runic Obelisks in ${biome.nameEn} blaze with power! The Sovereign's ward is shattered—strike now!"`,
+        hintFa: 'پیکان طلایی را به سوی مرکز میدان نبرد دنبال کنید.',
+        hintEn: 'Advance to the central arena to finish the battle!',
       };
     case 'boss_damaged':
       return {
         id: 'boss_damaged',
         stepIndex: 3,
         totalSteps: 4,
-        speakerFa: 'روح نگهبان بیشه',
-        speakerEn: 'Grove Spirit',
-        textFa: `«آفرین جوانه دلیر! ضربات درخشان تو تاریکی را به عقب می‌راند. ادامه بده!»`,
-        textEn: `"Well struck, brave Sproutling! Your radiant blows push back the gloom—keep going!"`,
-        hintFa: 'تا تکمیل کامل نوار پیشرفت مرحله ادامه دهید.',
-        hintEn: 'Keep going until the stage progress reaches 100%!',
+        speakerFa: 'کایلن (نگهبان اخترتاب)',
+        speakerEn: 'Kaelen (Astral Warden)',
+        textFa: `«زره فرمانروای سایه ترک برداشته است! مراقب امواج خشم او باشید و با جاخالی به موقع ضدحمله بزنید!»`,
+        textEn: `"The Void Sovereign's armor is cracking! Watch for his crimson telegraph rings and counter-strike!"`,
+        hintFa: 'هنگام مشاهده حلقه هشدار قرمز با کلید Shift جاخالی دهید.',
+        hintEn: 'Use Tactical Dodge [Shift] when the crimson telegraph ring appears!',
       };
     case 'boss_cleansed':
     default:
@@ -2447,12 +2840,12 @@ export function getInGameStoryBeat(
         id: 'boss_cleansed',
         stepIndex: 4,
         totalSteps: 4,
-        speakerFa: 'روح نگهبان بیشه',
-        speakerEn: 'Grove Spirit',
-        textFa: `«ماموریت ${biome.nameFa} با پیروزی کامل به پایان رسید! دروازه درخشان به سوی فصل ${lvl + 1} و یک ماجراجویی کاملاً جدید گشوده شد!»`,
-        textEn: `"Mission accomplished in ${biome.nameEn}! The shimmering portal to Chapter ${lvl + 1} and a brand-new adventure is open!"`,
-        hintFa: 'مرحله به‌پایان رسید! وارد فصل بعدی شوید.',
-        hintEn: 'Stage Complete! Advance to the next chapter.',
+        speakerFa: 'فرمانده محفل اخترتاب',
+        speakerEn: 'High Arbiter of Aethelgard',
+        textFa: `«پیروزی شکوهمند در ${biome.nameFa}! تاریکی درهم شکست و دروازه اخترتاب به سوی فصل ${lvl + 1} گشوده شد!»`,
+        textEn: `"Glorious victory in ${biome.nameEn}! The shadow legion is vanquished and the Astral Gate to Chapter ${lvl + 1} stands open!"`,
+        hintFa: 'قلمرو آزاد شد! بلورهای اخترتاب را در درخت مهارت خرج کنید و وارد فصل بعد شوید.',
+        hintEn: 'Realm Liberated! Upgrade your Mastery Tree and advance to the next chapter.',
       };
   }
 }
@@ -2499,8 +2892,8 @@ const DAILY_QUEST_TEMPLATES: QuestTemplate[] = [
     maxTarget: 12,
     baseSeeds: 3,
     baseScore: 300,
-    buildTitle: (t) => `Harvest ${t} Sun-Seeds`,
-    buildDescription: (t) => `Gather ${t} glowing Golden Sun-Seeds scattered across the woodland.`,
+    buildTitle: (t) => `Claim ${t} Astral Shards`,
+    buildDescription: (t) => `Secure ${t} radiant Astral Shards across the contested battlefield.`,
   },
   {
     type: 'cleanse_gloomlings',
@@ -2508,8 +2901,8 @@ const DAILY_QUEST_TEMPLATES: QuestTemplate[] = [
     maxTarget: 8,
     baseSeeds: 3,
     baseScore: 350,
-    buildTitle: (t) => `Bonk ${t} Gloomlings`,
-    buildDescription: (t) => `Cleanse ${t} mischievous woodland gloomlings with your Acorn Wand.`,
+    buildTitle: (t) => `Vanquish ${t} Voidbound Foes`,
+    buildDescription: (t) => `Defeat ${t} corrupted Voidbound enemies using your Runic Blade.`,
   },
   {
     type: 'restore_shrines',
@@ -2517,8 +2910,8 @@ const DAILY_QUEST_TEMPLATES: QuestTemplate[] = [
     maxTarget: 4,
     baseSeeds: 4,
     baseScore: 450,
-    buildTitle: (t) => `Restore ${t} Ancient Shrines`,
-    buildDescription: (t) => `Offer Sun-Seeds to awaken ${t} dimmed shrines in the grove.`,
+    buildTitle: (t) => `Ignite ${t} Runic Obelisks`,
+    buildDescription: (t) => `Channel Astral Shards to awaken ${t} ancient obelisks in the realm.`,
   },
   {
     type: 'bloom_spins',
@@ -2526,8 +2919,8 @@ const DAILY_QUEST_TEMPLATES: QuestTemplate[] = [
     maxTarget: 6,
     baseSeeds: 2,
     baseScore: 250,
-    buildTitle: (t) => `Unleash ${t} Bloom Spins`,
-    buildDescription: (t) => `Cast your Pollen Bloom Spin ability ${t} times in the glade.`,
+    buildTitle: (t) => `Unleash ${t} Astral Novas`,
+    buildDescription: (t) => `Execute your Astral Nova shockwave ability ${t} times in combat.`,
   },
   {
     type: 'leaf_dashes',
@@ -2535,8 +2928,8 @@ const DAILY_QUEST_TEMPLATES: QuestTemplate[] = [
     maxTarget: 9,
     baseSeeds: 2,
     baseScore: 250,
-    buildTitle: (t) => `Perform ${t} Leaf Dashes`,
-    buildDescription: (t) => `Dash swiftly through the meadow ${t} times using Leaf Dash.`,
+    buildTitle: (t) => `Execute ${t} Tactical Dodges`,
+    buildDescription: (t) => `Evade attacks using Tactical Phase-Dodge ${t} times.`,
   },
   {
     type: 'combo_finishers',
@@ -2544,8 +2937,8 @@ const DAILY_QUEST_TEMPLATES: QuestTemplate[] = [
     maxTarget: 6,
     baseSeeds: 3,
     baseScore: 400,
-    buildTitle: (t) => `Land ${t} Combo Finishers`,
-    buildDescription: (t) => `Strike with the 3rd heavy Acorn Wand combo finisher ${t} times.`,
+    buildTitle: (t) => `Land ${t} 3-Hit Combo Finishers`,
+    buildDescription: (t) => `Unleash the 3rd-stage Astral Cleave Finisher ${t} times in battle.`,
   },
 ];
 
@@ -2706,18 +3099,17 @@ export function createInitialSproutBuddy(startX: number = -1.4, startZ: number =
     targetX: null,
     targetZ: null,
     targetType: 'none',
-    targetLabel: 'Following Pip',
-    targetLabelFa: 'همراهی پیپ',
+    targetLabel: 'Wisp Escorting Warden',
+    targetLabelFa: 'ویسپ در حال اسکورت نگهبان',
     distanceToTarget: 0,
     isHighlighting: false,
   };
 }
 
 /**
- * Pure simulation update for the non-combative 'Sprout-Buddy' pet companion.
- * Scans nearby procedural map entities (Sun-Seeds, un-restored Shrines, Caged Sprouts,
- * Harmonic Bells, Defense Totems, Starlight Meteors) to highlight the most helpful nearby target,
- * and smoothly orbits/leads Pip toward it.
+ * Pure simulation update for the Runic Wisp Companion ('Sprout-Buddy' radar unit).
+ * Scans nearby procedural map entities (Astral Shards, un-restored Shrines, Captured Wardens,
+ * Harmonic Bells, Defense Totems, Starlight Meteors) to highlight the highest-priority tactical target.
  */
 export function computeSproutBuddyUpdate(params: {
   buddy: SproutBuddyState;
@@ -2747,9 +3139,9 @@ export function computeSproutBuddyUpdate(params: {
   let bestTargetX: number | null = null;
   let bestTargetZ: number | null = null;
   let bestType: SproutBuddyTargetType = 'none';
-  let bestLabel = 'Following Pip';
-  let bestLabelFa = 'همراهی پیپ';
-  let bestScore = Infinity; // Lower score = higher priority
+  let bestLabel = 'Wisp Escorting Warden';
+  let bestLabelFa = 'ویسپ در حال اسکورت نگهبان';
+  let bestScore = Infinity;
 
   const SHRINE_SCAN_RADIUS = 28;
   const SEED_SCAN_RADIUS = 24;
@@ -2764,8 +3156,8 @@ export function computeSproutBuddyUpdate(params: {
           bestTargetX = sp.cageX;
           bestTargetZ = sp.cageZ;
           bestType = 'mission_prop';
-          bestLabel = 'Caged Sproutling Nearby';
-          bestLabelFa = 'قفس جوانه گمشده در نزدیکی';
+          bestLabel = 'Prisoner Seal Located';
+          bestLabelFa = 'مهر زندان نگهبان در نزدیکی';
         }
       }
     }
@@ -2778,8 +3170,8 @@ export function computeSproutBuddyUpdate(params: {
           bestTargetX = bell.x;
           bestTargetZ = bell.z;
           bestType = 'shrine';
-          bestLabel = 'Ancient Chime Bell';
-          bestLabelFa = 'زنگوله باستانی معبد';
+          bestLabel = 'Resonance Bell Tower';
+          bestLabelFa = 'برج ناقوس تشدید';
         }
       }
     }
@@ -2792,8 +3184,8 @@ export function computeSproutBuddyUpdate(params: {
           bestTargetX = totem.x;
           bestTargetZ = totem.z;
           bestType = 'shrine';
-          bestLabel = 'Ready Healing Totem';
-          bestLabelFa = 'توتم شفابخش آماده';
+          bestLabel = 'Runic Shockwave Obelisk';
+          bestLabelFa = 'ستون موج رونیک آماده';
         }
       }
     }
@@ -2806,8 +3198,8 @@ export function computeSproutBuddyUpdate(params: {
           bestTargetX = meteor.x;
           bestTargetZ = meteor.z;
           bestType = 'mission_prop';
-          bestLabel = 'Starlight Meteor Core';
-          bestLabelFa = 'شهاب‌سنگ نورانی';
+          bestLabel = 'Astral Meteorite Core';
+          bestLabelFa = 'هسته شهاب‌سنگ اخترتاب';
         }
       }
     }
@@ -2815,7 +3207,6 @@ export function computeSproutBuddyUpdate(params: {
     for (const shrine of shrines) {
       if (!shrine.isRestored) {
         const d = distance(playerX, playerZ, shrine.x, shrine.z);
-        // Prioritize shrines strongly if player has seeds or in boss_duel where shrines stun boss
         const weight = sunSeeds > 0 ? 0.65 : 0.82;
         if (d <= SHRINE_SCAN_RADIUS && d * weight < bestScore) {
           bestScore = d * weight;
@@ -2823,13 +3214,13 @@ export function computeSproutBuddyUpdate(params: {
           bestTargetZ = shrine.z;
           bestType = 'shrine';
           bestLabel = shrine.name;
-          bestLabelFa = 'ستون معبد خورشید';
+          bestLabelFa = 'ستون تشدید اخترتاب';
         }
       }
     }
   }
 
-  // 2. Scan nearby Sun-Seeds (especially prioritized when Pip needs seeds or a seed is close)
+  // 2. Scan nearby Astral Shards / Sun-Seeds
   for (const seed of pickups) {
     const d = distance(playerX, playerZ, seed.x, seed.z);
     if (d <= SEED_SCAN_RADIUS) {
@@ -2839,13 +3230,13 @@ export function computeSproutBuddyUpdate(params: {
         bestTargetX = seed.x;
         bestTargetZ = seed.z;
         bestType = 'seed';
-        bestLabel = 'Sun-Seed Detected';
-        bestLabelFa = 'بذر خورشید در نزدیکی';
+        bestLabel = 'Astral Shard Detected';
+        bestLabelFa = 'بلور اخترتاب در نزدیکی';
       }
     }
   }
 
-  // 3. Fallback: if no un-restored shrine was checked in non-boss modes, also check shrines if any are unrestored
+  // 3. Fallback: unrestored shrines
   if (bestType === 'none') {
     for (const shrine of shrines) {
       if (!shrine.isRestored) {
@@ -2856,7 +3247,7 @@ export function computeSproutBuddyUpdate(params: {
           bestTargetZ = shrine.z;
           bestType = 'shrine';
           bestLabel = shrine.name;
-          bestLabelFa = 'معبد باستانی';
+          bestLabelFa = 'محراب باستانی';
         }
       }
     }
@@ -2872,7 +3263,6 @@ export function computeSproutBuddyUpdate(params: {
     const dz = bestTargetZ - playerZ;
     distToTarget = Math.hypot(dx, dz);
     if (distToTarget > 0.01) {
-      // Sprout-Buddy scouts ahead of Pip toward the highlighted seed or shrine (up to 3.4 units from Pip)
       const leadDist = Math.min(3.4, Math.max(1.5, distToTarget * 0.38));
       desiredX = playerX + (dx / distToTarget) * leadDist + Math.cos(elapsedTime * 3.2) * 0.25;
       desiredZ = playerZ + (dz / distToTarget) * leadDist + Math.sin(elapsedTime * 3.2) * 0.25;

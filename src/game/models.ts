@@ -1,15 +1,20 @@
 /**
- * High-Fidelity Procedural Multi-Part 3D Character, Enemy, Shrine & Boss Models
- * for Sproutling: Grove Guardian 3D.
+ * High-Fidelity Procedural Multi-Part 3D Character, Enemy, Citadel, Shrine & Boss Models
+ * for Aethelgard: Warden of the Astral Grove (3D Action-RPG).
  *
  * Includes:
- * - Articulated Hero Rig (Left/Right arms, ears, 4-layer expressive eyes with catchlights,
- *   eyebrows, explorer seed satchel, ornate Acorn Lantern Staff with orbiting filigree ring,
- *   and diegetic 3D Golden Objective Compass Arrow)
- * - Upgraded Multi-Part Enemy Archetypes (Spore Puffer with gills/feet/brows,
- *   Armored Bramble Roller with carved mask & ember bands, 4-Winged Gloom Sprite with orbiting shards)
- * - Ancient Sun Shrines with astrolabe rings & Solar Tether Beams toward the Central Boss
- * - 14-Part Corrupted Elder Bramble Ent Boss with carved face, clawed arms, antler crown & Rune Shield
+ * - Articulated Hero Rig: Kaelen, the Astral Warden (Obsidian-steel cuirass, layered pauldrons,
+ *   crowned war-helms, glowing runic reactor pack, swappable 3D Mythic Weapons: Astral Glaive,
+ *   Sunforged Greatsword, Runic Halberd, dynamic 3-step Combo Slash Arc VFX, and 3D Tactical Compass)
+ * - The Astral Bastion Keep (Sanctuary Citadel with fortified spires, stained-glass rose window,
+ *   Arcane Soul-Forge Brazier, Runic Obelisk perimeter wards, and 4 Champion Relic Pedestals)
+ * - Dark-Mythic Enemy Archetypes:
+ *   1. Void Stalker Fiend (Reaper Construct with twin plasma-scythe forelimbs & dorsal void spines)
+ *   2. Obsidian Siege Juggernaut (Spiked dark-iron war-sphere with magma core & laser charge telegraph)
+ *   3. Abyssal Archon Wraith (Eldritch seraph with 4 levitating runic blade-wings & eclipse halo)
+ * - Malakor, the Eclipse Titan (18-Part Celestial-Void Colossus Boss with horned sovereign helm,
+ *   spinning Astral Reactor Core, articulated war-gauntlets, dorsal monolith crown & Aegis Shield)
+ * - Orin, the Celestial Astrolabe Sentinel (Arcane-mechanical companion drone & 3D Target Beacon)
  */
 
 import * as THREE from 'three';
@@ -17,12 +22,14 @@ import {
   DEFAULT_CUSTOMIZATION,
   DEFAULT_HOME_BASE,
   CUSTOMIZATION_OPTIONS,
+  WEAPON_CATALOG,
   getStageBiomeTheme,
   type CharacterCustomization,
   type HomeBaseCustomization,
   type TrophyStatus,
   type StageBiomeTheme,
   type StageObstacle,
+  type WeaponType,
 } from './rules';
 
 export function createContactShadowTexture(): THREE.CanvasTexture {
@@ -32,9 +39,9 @@ export function createContactShadowTexture(): THREE.CanvasTexture {
   const ctx = canvas.getContext('2d')!;
 
   const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-  gradient.addColorStop(0, 'rgba(10, 24, 16, 0.75)');
-  gradient.addColorStop(0.5, 'rgba(10, 24, 16, 0.38)');
-  gradient.addColorStop(1, 'rgba(10, 24, 16, 0)');
+  gradient.addColorStop(0, 'rgba(6, 10, 18, 0.82)');
+  gradient.addColorStop(0.5, 'rgba(6, 10, 18, 0.42)');
+  gradient.addColorStop(1, 'rgba(6, 10, 18, 0)');
 
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 128, 128);
@@ -52,7 +59,7 @@ export function createContactShadow(radius: number): THREE.Mesh {
     map: shadowTexture,
     transparent: true,
     depthWrite: false,
-    opacity: 0.65,
+    opacity: 0.72,
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.rotation.x = -Math.PI / 2;
@@ -62,8 +69,10 @@ export function createContactShadow(radius: number): THREE.Mesh {
 }
 
 /**
- * Procedural Hero: Pip the Sproutling with articulated limbs, multi-layer expressive face,
- * woodland satchel, ornate Acorn Lantern Staff, and 3D Objective Waypoint Compass.
+ * Procedural Hero: Kaelen, the Astral Warden — High-Fantasy Armored Warrior Rig
+ * with sculpted breastplate & pauldrons, flowing mantle, swappable 3D Mythic Weapons
+ * (Astral Glaive, Sunforged Greatsword, Runic Halberd), 3D Combo Slash Arc trail,
+ * and diegetic 3D Tactical Compass.
  */
 export interface HeroRig {
   root: THREE.Group;
@@ -80,6 +89,11 @@ export interface HeroRig {
   staff: THREE.Group;
   staffCrystal: THREE.Mesh;
   staffRing: THREE.Mesh;
+  slashArcMesh: THREE.Mesh;
+  slashArcMat: THREE.MeshBasicMaterial;
+  parryShieldGroup: THREE.Group;
+  parryShockwaveMesh: THREE.Mesh;
+  parryShockwaveMat: THREE.MeshBasicMaterial;
   auraHaloGroup: THREE.Group;
   leftFoot: THREE.Mesh;
   rightFoot: THREE.Mesh;
@@ -91,300 +105,460 @@ export interface HeroRig {
   clothingMat: THREE.MeshStandardMaterial;
   swingAngle: number;
   applyCustomization: (custom: CharacterCustomization) => void;
+  applyWeapon: (weaponId: WeaponType) => void;
+  triggerSlashArc: (comboStep: number, isCrit: boolean) => void;
   setHighDetailEnabled: (enabled: boolean) => void;
   setQualityTier: (quality: 'eco' | 'balanced' | 'high' | 'ultra') => void;
 }
 
-export function createHeroModel(initialCustom: CharacterCustomization = DEFAULT_CUSTOMIZATION): HeroRig {
+export function createHeroModel(
+  initialCustom: CharacterCustomization = DEFAULT_CUSTOMIZATION,
+  initialWeapon: WeaponType = 'astral-glaive'
+): HeroRig {
   const root = new THREE.Group();
   const bodyGroup = new THREE.Group();
   root.add(bodyGroup);
 
   const skinMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(initialCustom.skinColor),
-    roughness: 0.46,
-    metalness: 0.06,
+    roughness: 0.38,
+    metalness: 0.12,
   });
-  const innerEarMat = new THREE.MeshStandardMaterial({
-    color: 0xffa5ab,
-    roughness: 0.55,
-    metalness: 0.02,
+  const armorSteelMat = new THREE.MeshStandardMaterial({
+    color: 0x1e293b,
+    roughness: 0.22,
+    metalness: 0.85,
   });
-  const bellyMat = new THREE.MeshStandardMaterial({
-    color: 0xf1faee,
-    roughness: 0.58,
-    metalness: 0.02,
+  const darkIronMat = new THREE.MeshStandardMaterial({
+    color: 0x0f172a,
+    roughness: 0.32,
+    metalness: 0.78,
   });
   const hairMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(initialCustom.hairColor),
-    roughness: 0.4,
-    metalness: 0.12,
+    roughness: 0.34,
+    metalness: 0.22,
     side: THREE.DoubleSide,
   });
   const clothingMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(initialCustom.clothingColor),
-    roughness: 0.48,
-    metalness: 0.08,
+    roughness: 0.42,
+    metalness: 0.28,
     side: THREE.DoubleSide,
   });
   const leatherMat = new THREE.MeshStandardMaterial({
-    color: 0x7f4f24,
-    roughness: 0.68,
-    metalness: 0.12,
+    color: 0x3b1d0a,
+    roughness: 0.62,
+    metalness: 0.18,
   });
   const goldMat = new THREE.MeshStandardMaterial({
-    color: 0xffd166,
-    emissive: 0xff9f1c,
-    emissiveIntensity: 0.35,
-    roughness: 0.22,
-    metalness: 0.65,
-  });
-  const woodMat = new THREE.MeshStandardMaterial({
-    color: 0x583101,
-    roughness: 0.76,
-    metalness: 0.06,
+    color: 0xfbbf24,
+    emissive: 0xd97706,
+    emissiveIntensity: 0.42,
+    roughness: 0.18,
+    metalness: 0.9,
   });
   const crystalMat = new THREE.MeshStandardMaterial({
-    color: 0xffe66d,
-    emissive: 0xffaa00,
-    emissiveIntensity: 0.95,
-    roughness: 0.15,
-    metalness: 0.25,
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 1.25,
+    roughness: 0.1,
+    metalness: 0.4,
   });
 
-  // 1. Torso / Lower Body
-  const bodyGeo = new THREE.SphereGeometry(0.55, 24, 20);
-  bodyGeo.scale(1, 1.16, 0.95);
-  const bodyMesh = new THREE.Mesh(bodyGeo, skinMat);
-  bodyMesh.position.y = 0.66;
+  // 1. Heroic Armored Torso & Sculpted Cuirass
+  const bodyGeo = new THREE.CylinderGeometry(0.43, 0.35, 0.8, 16);
+  const bodyMesh = new THREE.Mesh(bodyGeo, armorSteelMat);
+  bodyMesh.position.y = 0.72;
   bodyMesh.castShadow = true;
   bodyMesh.receiveShadow = true;
   bodyGroup.add(bodyMesh);
 
-  // Soft cream belly patch with stitched leaf pattern
-  const bellyGeo = new THREE.SphereGeometry(0.43, 18, 16);
-  bellyGeo.scale(0.86, 0.92, 0.42);
-  const bellyMesh = new THREE.Mesh(bellyGeo, bellyMat);
-  bellyMesh.position.set(0, 0.6, 0.38);
-  bodyGroup.add(bellyMesh);
+  // Sculpted Chestplate Cuirass & Golden Filigree Ribbing
+  const chestPlateGeo = new THREE.BoxGeometry(0.58, 0.46, 0.28);
+  const chestPlate = new THREE.Mesh(chestPlateGeo, darkIronMat);
+  chestPlate.position.set(0, 0.82, 0.15);
+  chestPlate.castShadow = true;
+  bodyGroup.add(chestPlate);
 
-  // Explorer Belt & Golden Acorn Buckle
-  const beltGeo = new THREE.TorusGeometry(0.52, 0.045, 10, 24);
-  beltGeo.rotateX(Math.PI / 2);
+  const chestTrim = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.07, 0.3), goldMat);
+  chestTrim.position.set(0, 0.98, 0.15);
+  bodyGroup.add(chestTrim);
+
+  const chestRune = new THREE.Mesh(new THREE.OctahedronGeometry(0.12, 0), crystalMat);
+  chestRune.scale.set(1.0, 1.4, 0.48);
+  chestRune.position.set(0, 0.83, 0.31);
+  bodyGroup.add(chestRune);
+
+  // Armored War-Girdle & Burnished Gold Sovereign Buckle
+  const beltGeo = new THREE.CylinderGeometry(0.41, 0.46, 0.17, 16);
   const beltMesh = new THREE.Mesh(beltGeo, leatherMat);
-  beltMesh.position.y = 0.48;
+  beltMesh.position.y = 0.46;
   bodyGroup.add(beltMesh);
 
-  const buckleMesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.09, 0), goldMat);
-  buckleMesh.scale.set(1.2, 1.0, 0.5);
-  buckleMesh.position.set(0, 0.48, 0.55);
+  const buckleMesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 0), goldMat);
+  buckleMesh.scale.set(1.35, 1.0, 0.52);
+  buckleMesh.position.set(0, 0.46, 0.44);
   bodyGroup.add(buckleMesh);
 
-  // 2. Sculpted Head & Woodland Pointed Ears
-  const headGeo = new THREE.SphereGeometry(0.49, 24, 20);
-  headGeo.scale(1.06, 0.96, 1.0);
+  // Multi-Layered Winged Pauldrons (Left & Right Shoulder Guards)
+  const buildPauldron = (side: -1 | 1) => {
+    const pGroup = new THREE.Group();
+    pGroup.position.set(side * 0.54, 1.05, 0);
+    pGroup.rotation.z = -side * 0.36;
+
+    const domeGeo = new THREE.SphereGeometry(0.25, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.58);
+    domeGeo.scale(1.3, 0.88, 1.12);
+    const dome = new THREE.Mesh(domeGeo, armorSteelMat);
+    dome.castShadow = true;
+
+    const trim = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.028, 8, 18), goldMat);
+    trim.rotation.x = Math.PI / 2;
+
+    const wingFin = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.32, 5), goldMat);
+    wingFin.position.set(side * 0.16, 0.16, -0.04);
+    wingFin.rotation.z = -side * 0.65;
+
+    pGroup.add(dome, trim, wingFin);
+    return pGroup;
+  };
+  bodyGroup.add(buildPauldron(-1), buildPauldron(1));
+
+  // 2. Sculpted Heroic Head & Armored Gorget Collar
+  const gorget = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 0.16, 14), darkIronMat);
+  gorget.position.y = 1.15;
+  bodyGroup.add(gorget);
+
+  const headGeo = new THREE.SphereGeometry(0.4, 22, 18);
+  headGeo.scale(0.95, 1.05, 0.98);
   const headMesh = new THREE.Mesh(headGeo, skinMat);
-  headMesh.position.y = 1.36;
+  headMesh.position.y = 1.44;
   headMesh.castShadow = true;
   bodyGroup.add(headMesh);
 
-  // Expressive Leaf/Elf Ears on Head
-  const earGroup = new THREE.Group();
-  const earOuterGeo = new THREE.ConeGeometry(0.14, 0.38, 10);
-  earOuterGeo.translate(0, 0.18, 0);
-  earOuterGeo.scale(0.65, 1.0, 1.0);
-  const earInnerGeo = new THREE.ConeGeometry(0.08, 0.26, 8);
-  earInnerGeo.translate(0, 0.16, 0.04);
-  earInnerGeo.scale(0.55, 1.0, 0.6);
-
-  const leftEar = new THREE.Group();
-  leftEar.position.set(-0.46, 0.02, -0.02);
-  leftEar.rotation.set(0.1, 0, 1.15);
-  leftEar.add(new THREE.Mesh(earOuterGeo, skinMat), new THREE.Mesh(earInnerGeo, innerEarMat));
-
-  const rightEar = new THREE.Group();
-  rightEar.position.set(0.46, 0.02, -0.02);
-  rightEar.rotation.set(0.1, 0, -1.15);
-  rightEar.add(new THREE.Mesh(earOuterGeo, skinMat), new THREE.Mesh(earInnerGeo, innerEarMat));
-
-  earGroup.add(leftEar, rightEar);
-  headMesh.add(earGroup);
+  const earOuterGeo = new THREE.ConeGeometry(0.08, 0.3, 8);
+  earOuterGeo.translate(0, 0.14, 0);
+  earOuterGeo.scale(0.58, 1.0, 0.82);
+  const leftEar = new THREE.Mesh(earOuterGeo, skinMat);
+  leftEar.position.set(-0.37, 0.02, -0.02);
+  leftEar.rotation.set(0.15, 0, 1.02);
+  const rightEar = new THREE.Mesh(earOuterGeo, skinMat);
+  rightEar.position.set(0.37, 0.02, -0.02);
+  rightEar.rotation.set(0.15, 0, -1.02);
+  headMesh.add(leftEar, rightEar);
 
   // 3. Facial Features Container
   const faceGroup = new THREE.Group();
-  faceGroup.position.set(0, 1.36, 0);
+  faceGroup.position.set(0, 1.44, 0);
   bodyGroup.add(faceGroup);
 
-  // 4. Hairstyle / Topknot Container
+  // 4. Helm / Crest / Hairstyle Container
   const sproutTop = new THREE.Group();
-  sproutTop.position.set(0, 1.8, 0);
+  sproutTop.position.set(0, 1.82, 0);
   bodyGroup.add(sproutTop);
 
-  // 5. Clothing / Outfit Container
+  // 5. Armor Mantle / Cuirass Trim Container
   const clothingGroup = new THREE.Group();
   bodyGroup.add(clothingGroup);
 
-  // 6. Woodland Seed Satchel / Backpack (Detail Group)
+  // 6. Runic Astral Reactor Core & Scabbard Mount on Back
   const satchelGroup = new THREE.Group();
-  satchelGroup.position.set(0, 0.78, -0.46);
-  const packBody = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.44, 0.26), leatherMat);
+  satchelGroup.position.set(0, 0.84, -0.34);
+  const packBody = new THREE.Mesh(new THREE.OctahedronGeometry(0.23, 0), darkIronMat);
+  packBody.scale.set(1.15, 1.45, 0.55);
   packBody.castShadow = true;
-  const packFlap = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.23, 0.46, 12, 1, false, 0, Math.PI), leatherMat);
-  packFlap.rotation.z = Math.PI / 2;
-  packFlap.position.set(0, 0.2, 0.02);
-  const packSeed = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 1), crystalMat);
-  packSeed.position.set(0.14, 0.26, 0.06);
-  const packClasp = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), goldMat);
-  packClasp.position.set(0, 0.05, 0.14);
-  satchelGroup.add(packBody, packFlap, packSeed, packClasp);
+  const packCore = new THREE.Mesh(new THREE.OctahedronGeometry(0.13, 1), crystalMat);
+  packCore.position.set(0, 0.04, -0.09);
+  const packRing = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.024, 8, 22), goldMat);
+  packRing.position.set(0, 0.04, -0.06);
+  satchelGroup.add(packBody, packCore, packRing);
   bodyGroup.add(satchelGroup);
 
-  // 7. Flowing Woodland Cape
+  // 7. Flowing Heroic Battle Cloak / Mantle with Gold Hem
   const capeShape = new THREE.Shape();
-  capeShape.moveTo(-0.42, 0);
-  capeShape.quadraticCurveTo(0, -0.78, 0.42, 0);
-  capeShape.quadraticCurveTo(0, -0.15, -0.42, 0);
+  capeShape.moveTo(-0.46, 0);
+  capeShape.lineTo(-0.58, -0.96);
+  capeShape.quadraticCurveTo(0, -1.12, 0.58, -0.96);
+  capeShape.lineTo(0.46, 0);
+  capeShape.closePath();
   const capeGeo = new THREE.ShapeGeometry(capeShape);
   const cape = new THREE.Mesh(capeGeo, clothingMat);
-  cape.position.set(0, 1.15, -0.44);
-  cape.rotation.x = -0.38;
+  cape.position.set(0, 1.14, -0.32);
+  cape.rotation.x = -0.26;
   bodyGroup.add(cape);
 
-  // 8. Articulated Left & Right Arms + Hands
-  const armGeo = new THREE.CapsuleGeometry(0.105, 0.28, 8, 12);
-  armGeo.translate(0, -0.16, 0);
-  const handGeo = new THREE.SphereGeometry(0.115, 12, 10);
-  handGeo.translate(0, -0.34, 0);
+  // 8. Articulated Left & Right Armored Vambraces & Gauntlets
+  const armGeo = new THREE.CapsuleGeometry(0.095, 0.32, 8, 12);
+  armGeo.translate(0, -0.18, 0);
+  const gauntletGeo = new THREE.CylinderGeometry(0.115, 0.095, 0.22, 10);
+  gauntletGeo.translate(0, -0.26, 0);
+  const handGeo = new THREE.SphereGeometry(0.105, 10, 10);
+  handGeo.translate(0, -0.38, 0);
 
   const leftArm = new THREE.Group();
-  leftArm.position.set(-0.52, 0.96, 0.05);
-  leftArm.rotation.z = 0.28;
-  const leftSleeve = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.24, 10), clothingMat);
-  leftSleeve.position.y = -0.08;
-  leftArm.add(new THREE.Mesh(armGeo, skinMat), new THREE.Mesh(handGeo, skinMat), leftSleeve);
+  leftArm.position.set(-0.52, 0.98, 0.04);
+  leftArm.rotation.z = 0.22;
+  leftArm.add(
+    new THREE.Mesh(armGeo, clothingMat),
+    new THREE.Mesh(gauntletGeo, armorSteelMat),
+    new THREE.Mesh(handGeo, goldMat)
+  );
   bodyGroup.add(leftArm);
 
   const rightArm = new THREE.Group();
-  rightArm.position.set(0.52, 0.96, 0.08);
-  rightArm.rotation.z = -0.25;
-  const rightSleeve = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.24, 10), clothingMat);
-  rightSleeve.position.y = -0.08;
-  rightArm.add(new THREE.Mesh(armGeo, skinMat), new THREE.Mesh(handGeo, skinMat), rightSleeve);
+  rightArm.position.set(0.52, 0.98, 0.08);
+  rightArm.rotation.z = -0.22;
+  rightArm.add(
+    new THREE.Mesh(armGeo, clothingMat),
+    new THREE.Mesh(gauntletGeo, armorSteelMat),
+    new THREE.Mesh(handGeo, goldMat)
+  );
   bodyGroup.add(rightArm);
 
-  // 9. Sculpted Woodland Boots / Feet
-  const footGeo = new THREE.SphereGeometry(0.17, 12, 10);
-  footGeo.scale(0.92, 0.65, 1.38);
-  const cuffGeo = new THREE.TorusGeometry(0.12, 0.035, 8, 14);
-  cuffGeo.rotateX(Math.PI / 2);
-  cuffGeo.translate(0, 0.08, -0.04);
+  // 9. Armored Sabatons & Knee-Guard Greaves
+  const greaveGeo = new THREE.CylinderGeometry(0.125, 0.145, 0.36, 12);
+  greaveGeo.translate(0, 0.15, 0);
+  const footGeo = new THREE.BoxGeometry(0.22, 0.14, 0.4);
+  footGeo.translate(0, 0.04, 0.06);
 
-  const leftFoot = new THREE.Mesh(footGeo, woodMat);
-  leftFoot.add(new THREE.Mesh(cuffGeo, leatherMat));
-  leftFoot.position.set(-0.26, 0.12, 0);
+  const leftFoot = new THREE.Mesh(footGeo, armorSteelMat);
+  leftFoot.add(new THREE.Mesh(greaveGeo, darkIronMat));
+  leftFoot.position.set(-0.22, 0.06, 0);
   leftFoot.castShadow = true;
 
-  const rightFoot = new THREE.Mesh(footGeo, woodMat);
-  rightFoot.add(new THREE.Mesh(cuffGeo, leatherMat));
-  rightFoot.position.set(0.26, 0.12, 0);
+  const rightFoot = new THREE.Mesh(footGeo, armorSteelMat);
+  rightFoot.add(new THREE.Mesh(greaveGeo, darkIronMat));
+  rightFoot.position.set(0.22, 0.06, 0);
   rightFoot.castShadow = true;
   bodyGroup.add(leftFoot, rightFoot);
 
-  // 10. Ornate Acorn Lantern Staff / Wand Rig
+  // 10. Swappable 3D Mythic Weapon Rig (Astral Glaive / Sunforged Greatsword / Runic Halberd)
   const staff = new THREE.Group();
-  staff.position.set(0.56, 0.82, 0.24);
+  staff.position.set(0.56, 0.84, 0.26);
 
-  const staffShaftGeo = new THREE.CylinderGeometry(0.042, 0.058, 1.35, 10);
-  const staffShaft = new THREE.Mesh(staffShaftGeo, woodMat);
-  staffShaft.castShadow = true;
-  staff.add(staffShaft);
+  const weaponVisualGroup = new THREE.Group();
+  staff.add(weaponVisualGroup);
 
-  // Grip wrapping
-  const gripMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.056, 0.056, 0.28, 10), leatherMat);
-  gripMesh.position.y = 0.05;
-  staff.add(gripMesh);
-
-  // Acorn Cup & Filigree Crown
-  const capGeo = new THREE.CylinderGeometry(0.21, 0.12, 0.22, 12);
-  capGeo.translate(0, 0.66, 0);
-  const staffCap = new THREE.Mesh(capGeo, woodMat);
-  staff.add(staffCap);
-
-  const capRim = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.028, 8, 18), goldMat);
-  capRim.rotation.x = Math.PI / 2;
-  capRim.position.y = 0.75;
-  staff.add(capRim);
-
-  // Floating Sun-Crystal & Orbiting Golden Astrolabe Ring
-  const crystalGeo = new THREE.OctahedronGeometry(0.21, 1);
+  const crystalGeo = new THREE.OctahedronGeometry(0.16, 1);
   const staffCrystal = new THREE.Mesh(crystalGeo, crystalMat);
-  staffCrystal.position.y = 0.92;
+  staffCrystal.position.y = 1.05;
   staff.add(staffCrystal);
 
-  const staffRingGeo = new THREE.TorusGeometry(0.3, 0.02, 8, 24);
+  const staffRingGeo = new THREE.TorusGeometry(0.26, 0.018, 8, 24);
   const staffRing = new THREE.Mesh(staffRingGeo, goldMat);
-  staffRing.position.y = 0.92;
+  staffRing.position.y = 1.05;
   staffRing.rotation.x = Math.PI / 3;
   staff.add(staffRing);
 
   bodyGroup.add(staff);
 
-  // 10b. High/Ultra Orbiting Sun-Mote Aura Halo around Hero
+  // 10a. Dynamic 3D Weapon Slash Arc Mesh (visualizes 3-hit combo swings & critical finishers)
+  const slashArcGeo = new THREE.RingGeometry(1.15, 2.55, 32, 1, -Math.PI * 0.48, Math.PI * 0.96);
+  slashArcGeo.rotateX(-Math.PI / 2);
+  slashArcGeo.rotateY(Math.PI / 2);
+  const slashArcMat = new THREE.MeshBasicMaterial({
+    color: 0x38bdf8,
+    transparent: true,
+    opacity: 0.0,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const slashArcMesh = new THREE.Mesh(slashArcGeo, slashArcMat);
+  slashArcMesh.position.set(0, 0.86, 0.28);
+  slashArcMesh.visible = false;
+  root.add(slashArcMesh);
+
+  let currentEquippedWeapon: WeaponType = initialWeapon;
+
+  const applyWeapon = (weaponId: WeaponType) => {
+    currentEquippedWeapon = weaponId;
+    weaponVisualGroup.clear();
+    const spec = WEAPON_CATALOG.find((w) => w.id === weaponId) || WEAPON_CATALOG[0];
+    crystalMat.color.setHex(spec.primaryColorHex);
+    crystalMat.emissive.setHex(spec.emissiveHex);
+
+    const bladeMat = new THREE.MeshStandardMaterial({
+      color: spec.primaryColorHex,
+      emissive: spec.emissiveHex,
+      emissiveIntensity: 0.95,
+      roughness: 0.14,
+      metalness: 0.9,
+      side: THREE.DoubleSide,
+    });
+
+    if (weaponId === 'sunforged-greatsword') {
+      const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.058, 0.58, 10), leatherMat);
+      grip.position.y = -0.26;
+      const pommel = new THREE.Mesh(new THREE.OctahedronGeometry(0.1, 0), goldMat);
+      pommel.position.y = -0.58;
+      const guard = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.1, 0.15), goldMat);
+      guard.position.y = 0.06;
+      const bladeGeo = new THREE.ConeGeometry(0.21, 1.62, 4);
+      bladeGeo.scale(1.0, 1.0, 0.26);
+      bladeGeo.translate(0, 0.88, 0);
+      const blade = new THREE.Mesh(bladeGeo, bladeMat);
+      blade.castShadow = true;
+      weaponVisualGroup.add(grip, pommel, guard, blade);
+      staffCrystal.position.set(0, 0.18, 0);
+      staffRing.position.set(0, 0.18, 0);
+    } else if (weaponId === 'runic-halberd') {
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.044, 0.052, 1.82, 10), armorSteelMat);
+      shaft.position.y = 0.12;
+      const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.068, 0.2, 12), goldMat);
+      collar.position.y = 0.92;
+      const spearTip = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.58, 6), bladeMat);
+      spearTip.position.y = 1.3;
+      const axeShape = new THREE.Shape();
+      axeShape.moveTo(0, 0.65);
+      axeShape.quadraticCurveTo(0.54, 0.9, 0.46, 1.28);
+      axeShape.quadraticCurveTo(0.2, 1.04, 0, 1.08);
+      axeShape.closePath();
+      const axeBlade = new THREE.Mesh(new THREE.ShapeGeometry(axeShape), bladeMat);
+      axeBlade.rotation.y = Math.PI / 2;
+      weaponVisualGroup.add(shaft, collar, spearTip, axeBlade);
+      staffCrystal.position.set(0, 0.98, 0);
+      staffRing.position.set(0, 0.98, 0);
+    } else {
+      // 'astral-glaive'
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.05, 1.62, 10), armorSteelMat);
+      shaft.position.y = 0.05;
+      const guardRing = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.028, 8, 18), goldMat);
+      guardRing.rotation.x = Math.PI / 2;
+      guardRing.position.y = 0.8;
+      const glaiveShape = new THREE.Shape();
+      glaiveShape.moveTo(0, 0.8);
+      glaiveShape.quadraticCurveTo(0.32, 1.16, 0.05, 1.65);
+      glaiveShape.quadraticCurveTo(-0.09, 1.2, 0, 0.8);
+      const glaiveBlade = new THREE.Mesh(new THREE.ShapeGeometry(glaiveShape), bladeMat);
+      glaiveBlade.rotation.y = Math.PI / 2;
+      weaponVisualGroup.add(shaft, guardRing, glaiveBlade);
+      staffCrystal.position.set(0, 0.9, 0);
+      staffRing.position.set(0, 0.9, 0);
+    }
+  };
+
+  const triggerSlashArc = (comboStep: number, isCrit: boolean) => {
+    const spec = WEAPON_CATALOG.find((w) => w.id === currentEquippedWeapon) || WEAPON_CATALOG[0];
+    slashArcMesh.visible = true;
+    slashArcMat.opacity = 0.92;
+    if (isCrit || comboStep === 3) {
+      slashArcMat.color.setHex(comboStep === 3 ? 0xfbbf24 : 0xf43f5e);
+      slashArcMesh.scale.set(1.38, 1.38, 1.38);
+      slashArcMesh.rotation.x = 0;
+    } else if (comboStep === 2) {
+      slashArcMat.color.setHex(0x38bdf8);
+      slashArcMesh.scale.set(1.12, 1.12, 1.12);
+      slashArcMesh.rotation.x = 0.25;
+    } else {
+      slashArcMat.color.setHex(spec.primaryColorHex);
+      slashArcMesh.scale.set(1.0, 1.0, 1.0);
+      slashArcMesh.rotation.x = -0.2;
+    }
+  };
+
+  // 10b. High/Ultra Orbiting Runic Ward Halo around Warden
   const auraHaloGroup = new THREE.Group();
   auraHaloGroup.position.set(0, 0.95, 0);
   for (let i = 0; i < 4; i++) {
     const ang = (i / 4) * Math.PI * 2;
-    const mote = new THREE.Mesh(new THREE.OctahedronGeometry(0.065, 0), crystalMat);
-    mote.position.set(Math.cos(ang) * 0.78, Math.sin(ang * 2) * 0.14, Math.sin(ang) * 0.78);
+    const mote = new THREE.Mesh(new THREE.OctahedronGeometry(0.068, 0), crystalMat);
+    mote.position.set(Math.cos(ang) * 0.84, Math.sin(ang * 2) * 0.14, Math.sin(ang) * 0.84);
     auraHaloGroup.add(mote);
   }
   const auraRing = new THREE.Mesh(
-    new THREE.TorusGeometry(0.76, 0.012, 6, 28),
-    new THREE.MeshBasicMaterial({ color: 0xffe66d, transparent: true, opacity: 0.42 })
+    new THREE.TorusGeometry(0.82, 0.013, 6, 28),
+    new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.45 })
   );
   auraRing.rotation.x = Math.PI / 2.2;
   auraHaloGroup.add(auraRing);
   bodyGroup.add(auraHaloGroup);
 
-  // 11. Diegetic 3D Objective Waypoint Compass at Pip's Feet
+  // 10c. 3D Runic Aegis Parry Ward & AoE Deflect Shockwave Ring
+  const parryShieldGroup = new THREE.Group();
+  parryShieldGroup.position.set(0, 0.92, 0.68);
+  parryShieldGroup.visible = false;
+
+  const shieldHexGeo = new THREE.RingGeometry(0.32, 0.72, 6);
+  const shieldHexMat = new THREE.MeshBasicMaterial({
+    color: 0x38bdf8,
+    transparent: true,
+    opacity: 0.85,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const shieldHexMesh = new THREE.Mesh(shieldHexGeo, shieldHexMat);
+  const shieldCoreGeo = new THREE.CircleGeometry(0.34, 6);
+  const shieldCoreMat = new THREE.MeshBasicMaterial({
+    color: 0xfbbf24,
+    transparent: true,
+    opacity: 0.55,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const shieldCoreMesh = new THREE.Mesh(shieldCoreGeo, shieldCoreMat);
+  const shieldOuterFrame = new THREE.Mesh(
+    new THREE.TorusGeometry(0.74, 0.032, 6, 6),
+    goldMat
+  );
+  parryShieldGroup.add(shieldHexMesh, shieldCoreMesh, shieldOuterFrame);
+  root.add(parryShieldGroup);
+
+  const parryShockwaveGeo = new THREE.RingGeometry(0.65, 1.15, 36);
+  parryShockwaveGeo.rotateX(-Math.PI / 2);
+  const parryShockwaveMat = new THREE.MeshBasicMaterial({
+    color: 0xffd166,
+    transparent: true,
+    opacity: 0.0,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const parryShockwaveMesh = new THREE.Mesh(parryShockwaveGeo, parryShockwaveMat);
+  parryShockwaveMesh.position.set(0, 0.14, 0);
+  parryShockwaveMesh.visible = false;
+  root.add(parryShockwaveMesh);
+
+  // 11. Diegetic 3D Tactical Objective Compass at Warden's Feet
   const compassGroup = new THREE.Group();
   compassGroup.position.y = 0.08;
 
-  const compassRingGeo = new THREE.RingGeometry(0.82, 0.92, 32);
+  const compassRingGeo = new THREE.RingGeometry(0.84, 0.95, 32);
   compassRingGeo.rotateX(-Math.PI / 2);
   const compassRingMat = new THREE.MeshBasicMaterial({
-    color: 0xffd166,
+    color: 0xfbbf24,
     transparent: true,
-    opacity: 0.45,
+    opacity: 0.52,
     side: THREE.DoubleSide,
     depthWrite: false,
   });
   const compassRing = new THREE.Mesh(compassRingGeo, compassRingMat);
   compassGroup.add(compassRing);
 
-  // Pointer Arrow pointing forward (+Z in local compass space)
   const arrowShape = new THREE.Shape();
-  arrowShape.moveTo(0, 0.38);
-  arrowShape.lineTo(0.24, -0.12);
+  arrowShape.moveTo(0, 0.42);
+  arrowShape.lineTo(0.25, -0.12);
   arrowShape.lineTo(0, -0.02);
-  arrowShape.lineTo(-0.24, -0.12);
+  arrowShape.lineTo(-0.25, -0.12);
   arrowShape.closePath();
   const arrowGeo = new THREE.ShapeGeometry(arrowShape);
   arrowGeo.rotateX(Math.PI / 2);
   const compassArrowMat = new THREE.MeshBasicMaterial({
-    color: 0xffd166,
+    color: 0xfbbf24,
     transparent: true,
-    opacity: 0.92,
+    opacity: 0.95,
     side: THREE.DoubleSide,
     depthWrite: false,
   });
   const arrowMesh = new THREE.Mesh(arrowGeo, compassArrowMat);
-  arrowMesh.position.set(0, 0.03, 1.15);
+  arrowMesh.position.set(0, 0.03, 1.16);
   compassGroup.add(arrowMesh);
 
   root.add(compassGroup);
 
-  const shadow = createContactShadow(0.82);
+  const shadow = createContactShadow(0.88);
   root.add(shadow);
 
   const applyCustomization = (custom: CharacterCustomization) => {
@@ -397,221 +571,137 @@ export function createHeroModel(initialCustom: CharacterCustomization = DEFAULT_
     hairMat.color.set(custom.hairColor);
     clothingMat.color.set(custom.clothingColor);
 
-    // Rebuild Hairstyle
     sproutTop.clear();
     if (custom.hairstyle === 'twin-sprout') {
-      const stemGeo = new THREE.CylinderGeometry(0.04, 0.055, 0.3, 8);
-      stemGeo.translate(0, 0.15, 0);
-      sproutTop.add(new THREE.Mesh(stemGeo, woodMat));
-
-      const leafShape = new THREE.Shape();
-      leafShape.moveTo(0, 0);
-      leafShape.quadraticCurveTo(0.22, 0.25, 0, 0.56);
-      leafShape.quadraticCurveTo(-0.22, 0.25, 0, 0);
-      const leafGeo = new THREE.ShapeGeometry(leafShape);
-
-      const l1 = new THREE.Mesh(leafGeo, hairMat);
-      l1.position.set(0, 0.28, 0);
-      l1.rotation.set(0.2, 0.4, 0.62);
-      const l2 = new THREE.Mesh(leafGeo, hairMat);
-      l2.position.set(0, 0.28, 0);
-      l2.rotation.set(-0.2, -0.4, -0.62);
-
-      // Tiny golden bud between leaves
-      const bud = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), goldMat);
-      bud.position.set(0, 0.3, 0);
-      sproutTop.add(l1, l2, bud);
+      // Astral Horned Valkyrie Great-Crest
+      const diadem = new THREE.Mesh(new THREE.TorusGeometry(0.37, 0.038, 8, 22), goldMat);
+      diadem.rotation.x = Math.PI / 2;
+      diadem.position.y = -0.18;
+      const hornGeo = new THREE.ConeGeometry(0.08, 0.56, 8);
+      hornGeo.translate(0, 0.26, 0);
+      const leftHorn = new THREE.Mesh(hornGeo, goldMat);
+      leftHorn.position.set(-0.25, -0.12, 0.14);
+      leftHorn.rotation.set(-0.25, 0, 0.44);
+      const rightHorn = new THREE.Mesh(hornGeo, goldMat);
+      rightHorn.position.set(0.25, -0.12, 0.14);
+      rightHorn.rotation.set(-0.25, 0, -0.44);
+      const centerGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.095, 0), crystalMat);
+      centerGem.position.set(0, -0.05, 0.37);
+      sproutTop.add(diadem, leftHorn, rightHorn, centerGem);
     } else if (custom.hairstyle === 'fluffy-bob') {
-      const domeGeo = new THREE.SphereGeometry(0.54, 16, 14, 0, Math.PI * 2, 0, Math.PI * 0.65);
+      // Swept Battle-Worn Warrior Hair
+      const domeGeo = new THREE.SphereGeometry(0.44, 16, 14, 0, Math.PI * 2, 0, Math.PI * 0.62);
       const dome = new THREE.Mesh(domeGeo, hairMat);
-      dome.position.y = -0.35;
-      sproutTop.add(dome);
-
-      const puffGeo = new THREE.SphereGeometry(0.2, 12, 12);
-      const p1 = new THREE.Mesh(puffGeo, hairMat);
-      p1.position.set(-0.4, -0.42, 0.14);
-      const p2 = new THREE.Mesh(puffGeo, hairMat);
-      p2.position.set(0.4, -0.42, 0.14);
-      sproutTop.add(p1, p2);
+      dome.position.y = -0.32;
+      const crestSpike = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.42, 6), hairMat);
+      crestSpike.position.set(0, -0.02, -0.14);
+      crestSpike.rotation.x = -0.48;
+      sproutTop.add(dome, crestSpike);
     } else if (custom.hairstyle === 'braided-crown') {
-      const ringGeo = new THREE.TorusGeometry(0.38, 0.095, 10, 22);
+      // Valkyrie War-Braids & Gold Circlet
+      const ringGeo = new THREE.TorusGeometry(0.36, 0.055, 10, 22);
       ringGeo.rotateX(Math.PI / 2);
-      const crown = new THREE.Mesh(ringGeo, hairMat);
-      crown.position.y = -0.15;
-      sproutTop.add(crown);
-
-      const braidGeo = new THREE.CapsuleGeometry(0.085, 0.38, 8, 10);
+      const crown = new THREE.Mesh(ringGeo, goldMat);
+      crown.position.y = -0.16;
+      const braidGeo = new THREE.CapsuleGeometry(0.075, 0.44, 8, 10);
       const b1 = new THREE.Mesh(braidGeo, hairMat);
-      b1.position.set(-0.42, -0.45, -0.04);
-      b1.rotation.z = 0.25;
+      b1.position.set(-0.36, -0.44, -0.08);
+      b1.rotation.z = 0.22;
       const b2 = new THREE.Mesh(braidGeo, hairMat);
-      b2.position.set(0.42, -0.45, -0.04);
-      b2.rotation.z = -0.25;
-      sproutTop.add(b1, b2);
+      b2.position.set(0.36, -0.44, -0.08);
+      b2.rotation.z = -0.22;
+      sproutTop.add(crown, b1, b2);
     } else if (custom.hairstyle === 'mushroom-beret') {
-      const capGeo = new THREE.SphereGeometry(0.6, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.55);
-      const cap = new THREE.Mesh(capGeo, hairMat);
-      cap.position.y = -0.22;
-      sproutTop.add(cap);
-
-      const dotMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 });
-      const dotGeo = new THREE.SphereGeometry(0.095, 10, 10);
-      [
-        [-0.25, 0.06, 0.26],
-        [0.26, 0.09, 0.18],
-        [0, 0.23, -0.2],
-        [-0.18, 0.19, -0.12],
-      ].forEach(([dx, dy, dz]) => {
-        const d = new THREE.Mesh(dotGeo, dotMat);
-        d.position.set(dx, dy, dz);
-        sproutTop.add(d);
-      });
+      // Ancient Warden Great-Helm & Plume
+      const helmGeo = new THREE.SphereGeometry(0.46, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.66);
+      const helm = new THREE.Mesh(helmGeo, armorSteelMat);
+      helm.position.y = -0.28;
+      const crestFin = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.3, 0.58), goldMat);
+      crestFin.position.set(0, 0.08, -0.04);
+      const plume = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.52, 8), hairMat);
+      plume.position.set(0, 0.18, -0.28);
+      plume.rotation.x = -0.78;
+      sproutTop.add(helm, crestFin, plume);
     } else if (custom.hairstyle === 'sun-halo') {
-      const coreMat = new THREE.MeshStandardMaterial({ color: 0x5a3825, roughness: 0.65 });
-      const core = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 12), coreMat);
-      core.position.y = 0.1;
-      sproutTop.add(core);
-
-      const petalGeo = new THREE.ConeGeometry(0.085, 0.3, 8);
-      for (let i = 0; i < 10; i++) {
-        const ang = (i / 10) * Math.PI * 2;
-        const petal = new THREE.Mesh(petalGeo, hairMat);
-        petal.position.set(Math.cos(ang) * 0.23, 0.1, Math.sin(ang) * 0.23);
-        petal.rotation.x = Math.PI / 2;
-        petal.rotation.z = -ang;
-        sproutTop.add(petal);
+      // Sunforged Sovereign Diadem Halo
+      const haloRing = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.032, 8, 24), goldMat);
+      haloRing.position.set(0, 0.05, -0.08);
+      sproutTop.add(haloRing);
+      const rayGeo = new THREE.ConeGeometry(0.048, 0.26, 6);
+      for (let i = 0; i < 7; i++) {
+        const ang = -Math.PI * 0.6 + (i / 6) * Math.PI * 1.2;
+        const ray = new THREE.Mesh(rayGeo, goldMat);
+        ray.position.set(Math.sin(ang) * 0.39, 0.05 + Math.cos(ang) * 0.39, -0.08);
+        ray.rotation.z = -ang;
+        sproutTop.add(ray);
       }
     }
 
-    // 4. Multi-Layer Expressive Facial Features (Sclera, Iris, Pupil, Dual Catchlights, Brows, Smile)
     faceGroup.clear();
-    const scleraMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const irisMat = new THREE.MeshStandardMaterial({ color: 0x2d6a4f, roughness: 0.2 });
-    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x0b130d });
-    const catchlightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const cheekMat = new THREE.MeshStandardMaterial({ color: 0xff8fa3, roughness: 0.6 });
-    const starMat = new THREE.MeshStandardMaterial({
-      color: 0xfff3b0,
-      emissive: 0xffd166,
+    const scleraMat = new THREE.MeshBasicMaterial({ color: 0xe2e8f0 });
+    const irisMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      emissive: 0x0284c7,
       emissiveIntensity: 0.85,
+      roughness: 0.12,
     });
-
-    // Rosy Cheeks
-    const cheekGeo = new THREE.SphereGeometry(0.085, 10, 10);
-    cheekGeo.scale(1.1, 0.62, 0.32);
-    const lc = new THREE.Mesh(cheekGeo, cheekMat);
-    lc.position.set(-0.29, -0.07, 0.39);
-    const rc = new THREE.Mesh(cheekGeo, cheekMat);
-    rc.position.set(0.29, -0.07, 0.39);
-    faceGroup.add(lc, rc);
-
-    // Expressive Eyebrows
-    const browGeo = new THREE.CapsuleGeometry(0.022, 0.11, 4, 8);
-    browGeo.rotateZ(Math.PI / 2);
-    const lBrow = new THREE.Mesh(browGeo, woodMat);
-    lBrow.position.set(-0.18, 0.16, 0.44);
-    lBrow.rotation.z = 0.12;
-    const rBrow = new THREE.Mesh(browGeo, woodMat);
-    rBrow.position.set(0.18, 0.16, 0.44);
-    rBrow.rotation.z = -0.12;
+    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+    const browGeo = new THREE.BoxGeometry(0.145, 0.034, 0.042);
+    const lBrow = new THREE.Mesh(browGeo, hairMat);
+    lBrow.position.set(-0.15, 0.13, 0.38);
+    lBrow.rotation.z = -0.2;
+    const rBrow = new THREE.Mesh(browGeo, hairMat);
+    rBrow.position.set(0.15, 0.13, 0.38);
+    rBrow.rotation.z = 0.2;
     faceGroup.add(lBrow, rBrow);
 
-    // Happy Woodland Smile Arc
-    const smileGeo = new THREE.TorusGeometry(0.065, 0.016, 6, 14, Math.PI);
-    const smileMesh = new THREE.Mesh(smileGeo, woodMat);
-    smileMesh.position.set(0, -0.06, 0.465);
-    smileMesh.rotation.x = Math.PI;
-    faceGroup.add(smileMesh);
-
-    if (custom.facialFeature === 'sleepy-cozy') {
-      const lidGeo = new THREE.TorusGeometry(0.075, 0.022, 8, 14, Math.PI);
-      const le = new THREE.Mesh(lidGeo, pupilMat);
-      le.position.set(-0.18, 0.03, 0.44);
-      const re = new THREE.Mesh(lidGeo, pupilMat);
-      re.position.set(0.18, 0.03, 0.44);
-      faceGroup.add(le, re);
+    if (custom.facialFeature === 'scholar-glasses') {
+      const visorGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.15, 16, 1, false, -Math.PI * 0.35, Math.PI * 0.7);
+      const visor = new THREE.Mesh(visorGeo, crystalMat);
+      visor.rotation.y = Math.PI;
+      visor.position.set(0, 0.04, 0.02);
+      faceGroup.add(visor);
     } else {
-      const buildDetailedEye = (xOffset: number) => {
+      const buildWardenEye = (xOffset: number) => {
         const eyeNode = new THREE.Group();
-        eyeNode.position.set(xOffset, 0.03, 0.42);
-
-        const sclera = new THREE.Mesh(new THREE.SphereGeometry(0.088, 14, 12), scleraMat);
-        sclera.scale.set(0.95, 1.1, 0.55);
-
-        const iris = new THREE.Mesh(new THREE.SphereGeometry(0.072, 12, 10), irisMat);
-        iris.scale.set(0.92, 1.05, 0.5);
-        iris.position.z = 0.018;
-
-        const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.052, 10, 10), pupilMat);
-        pupil.scale.set(0.9, 1.0, 0.45);
-        pupil.position.z = 0.032;
-
-        const catch1 = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 8), catchlightMat);
-        catch1.position.set(0.022, 0.026, 0.052);
-        const catch2 = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 6), catchlightMat);
-        catch2.position.set(-0.02, -0.02, 0.05);
-
-        eyeNode.add(sclera, iris, pupil, catch1, catch2);
+        eyeNode.position.set(xOffset, 0.03, 0.37);
+        const sclera = new THREE.Mesh(new THREE.SphereGeometry(0.068, 12, 10), scleraMat);
+        sclera.scale.set(1.18, 0.72, 0.45);
+        const iris = new THREE.Mesh(new THREE.SphereGeometry(0.052, 10, 10), irisMat);
+        iris.scale.set(1.0, 0.72, 0.45);
+        iris.position.z = 0.016;
+        const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.032, 8, 8), pupilMat);
+        pupil.position.z = 0.028;
+        eyeNode.add(sclera, iris, pupil);
         return eyeNode;
       };
-
-      faceGroup.add(buildDetailedEye(-0.18), buildDetailedEye(0.18));
-
-      if (custom.facialFeature === 'starry') {
-        const sparkGeo = new THREE.OctahedronGeometry(0.038, 0);
-        const s1 = new THREE.Mesh(sparkGeo, starMat);
-        s1.position.set(-0.16, 0.05, 0.49);
-        const s2 = new THREE.Mesh(sparkGeo, starMat);
-        s2.position.set(0.2, 0.05, 0.49);
-        faceGroup.add(s1, s2);
-      } else if (custom.facialFeature === 'scholar-glasses') {
-        const rimGeo = new THREE.TorusGeometry(0.125, 0.019, 10, 22);
-        const g1 = new THREE.Mesh(rimGeo, goldMat);
-        g1.position.set(-0.18, 0.03, 0.475);
-        const g2 = new THREE.Mesh(rimGeo, goldMat);
-        g2.position.set(0.18, 0.03, 0.475);
-        const bridge = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.14, 8), goldMat);
-        bridge.rotation.z = Math.PI / 2;
-        bridge.position.set(0, 0.03, 0.475);
-        faceGroup.add(g1, g2, bridge);
-      }
+      faceGroup.add(buildWardenEye(-0.15), buildWardenEye(0.15));
     }
 
-    // 5. Rebuild Clothing / Tunic with Gold Trim
     clothingGroup.clear();
     if (custom.clothing === 'leaf-cloak') {
-      const collarGeo = new THREE.TorusGeometry(0.39, 0.085, 10, 20);
+      const collarGeo = new THREE.TorusGeometry(0.36, 0.065, 10, 20);
       collarGeo.rotateX(Math.PI / 2);
-      const collar = new THREE.Mesh(collarGeo, clothingMat);
-      collar.position.y = 0.96;
-      const brooch = new THREE.Mesh(new THREE.OctahedronGeometry(0.075, 0), goldMat);
-      brooch.position.set(0, 0.94, 0.42);
-      clothingGroup.add(collar, brooch);
+      const collar = new THREE.Mesh(collarGeo, goldMat);
+      collar.position.y = 1.08;
+      clothingGroup.add(collar);
     } else if (custom.clothing === 'traveler-poncho') {
-      const ponchoGeo = new THREE.ConeGeometry(0.65, 0.56, 18, 1, true);
-      const poncho = new THREE.Mesh(ponchoGeo, clothingMat);
-      poncho.position.y = 0.82;
-      const trim = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.025, 8, 22), goldMat);
-      trim.rotation.x = Math.PI / 2;
-      trim.position.y = 0.56;
-      clothingGroup.add(poncho, trim);
+      const mantleGeo = new THREE.ConeGeometry(0.58, 0.48, 16, 1, true);
+      const mantle = new THREE.Mesh(mantleGeo, clothingMat);
+      mantle.position.y = 0.9;
+      clothingGroup.add(mantle);
     } else if (custom.clothing === 'sun-robe') {
-      const robeGeo = new THREE.CylinderGeometry(0.42, 0.63, 0.68, 18);
-      const robe = new THREE.Mesh(robeGeo, clothingMat);
-      robe.position.y = 0.56;
-      const sash = new THREE.Mesh(new THREE.TorusGeometry(0.51, 0.045, 8, 20), goldMat);
-      sash.rotation.x = Math.PI / 2;
-      sash.position.y = 0.66;
-      clothingGroup.add(robe, sash);
+      const tassetGeo = new THREE.CylinderGeometry(0.38, 0.54, 0.56, 16);
+      const tasset = new THREE.Mesh(tassetGeo, clothingMat);
+      tasset.position.y = 0.52;
+      const trim = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.035, 8, 20), goldMat);
+      trim.rotation.x = Math.PI / 2;
+      trim.position.y = 0.62;
+      clothingGroup.add(tasset, trim);
     } else if (custom.clothing === 'berry-overalls') {
-      const bibGeo = new THREE.CylinderGeometry(0.48, 0.57, 0.48, 18);
-      const bib = new THREE.Mesh(bibGeo, clothingMat);
-      bib.position.y = 0.48;
-      const scarfMat = new THREE.MeshStandardMaterial({ color: 0xff8fa3, roughness: 0.45 });
-      const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.39, 0.07, 10, 18), scarfMat);
-      scarf.rotation.x = Math.PI / 2;
-      scarf.position.y = 0.96;
-      clothingGroup.add(bib, scarf);
+      const guardPlate = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.5, 0.46, 16), armorSteelMat);
+      guardPlate.position.y = 0.52;
+      clothingGroup.add(guardPlate);
     }
   };
 
@@ -627,6 +717,7 @@ export function createHeroModel(initialCustom: CharacterCustomization = DEFAULT_
   };
 
   applyCustomization(initialCustom);
+  applyWeapon(initialWeapon);
 
   return {
     root,
@@ -643,6 +734,11 @@ export function createHeroModel(initialCustom: CharacterCustomization = DEFAULT_
     staff,
     staffCrystal,
     staffRing,
+    slashArcMesh,
+    slashArcMat,
+    parryShieldGroup,
+    parryShockwaveMesh,
+    parryShockwaveMat,
     auraHaloGroup,
     leftFoot,
     rightFoot,
@@ -654,13 +750,16 @@ export function createHeroModel(initialCustom: CharacterCustomization = DEFAULT_
     clothingMat,
     swingAngle: 0,
     applyCustomization,
+    applyWeapon,
+    triggerSlashArc,
     setHighDetailEnabled,
     setQualityTier,
   };
 }
 
 /**
- * Cozy Customizable Home Base Sanctuary (Safe Zone at x: 0, z: 14)
+ * The Astral Bastion Keep (Sanctuary Citadel Safe Zone at x: 0, z: 14)
+ * Replaces the old cottage with an imposing Obsidian, Slate & Gold Gothic-Mythic Bastion!
  */
 export interface HomeBaseRig {
   root: THREE.Group;
@@ -684,194 +783,253 @@ export function createHomeBaseModel(
 ): HomeBaseRig {
   const root = new THREE.Group();
 
-  const terraceGeo = new THREE.CylinderGeometry(6.0, 6.25, 0.18, 32);
+  // Octagonal Obsidian & Burnished Gold Citadel Platform
+  const terraceGeo = new THREE.CylinderGeometry(6.0, 6.3, 0.24, 16);
   const terraceMat = new THREE.MeshStandardMaterial({
-    color: 0xe6ccb2,
-    roughness: 0.82,
+    color: 0x1e293b,
+    roughness: 0.45,
+    metalness: 0.65,
   });
   const terrace = new THREE.Mesh(terraceGeo, terraceMat);
-  terrace.position.y = 0.09;
+  terrace.position.y = 0.12;
   terrace.receiveShadow = true;
   root.add(terrace);
 
-  const borderGeo = new THREE.RingGeometry(5.82, 6.08, 40);
+  // Glowing Astral Protection Ward Circle
+  const borderGeo = new THREE.RingGeometry(5.75, 6.08, 48);
   borderGeo.rotateX(-Math.PI / 2);
   const borderMat = new THREE.MeshBasicMaterial({
-    color: 0x95d5b2,
+    color: 0x38bdf8,
     transparent: true,
-    opacity: 0.5,
+    opacity: 0.65,
   });
   const borderRing = new THREE.Mesh(borderGeo, borderMat);
-  borderRing.position.y = 0.19;
+  borderRing.position.y = 0.25;
   root.add(borderRing);
 
-  // Cozy Acorn Cottage
-  const cottageGroup = new THREE.Group();
-  cottageGroup.position.set(0, 0.16, 3.2);
-  root.add(cottageGroup);
+  const innerRuneRingGeo = new THREE.RingGeometry(4.1, 4.22, 32);
+  innerRuneRingGeo.rotateX(-Math.PI / 2);
+  const innerRuneRing = new THREE.Mesh(
+    innerRuneRingGeo,
+    new THREE.MeshBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.4 })
+  );
+  innerRuneRing.position.y = 0.25;
+  root.add(innerRuneRing);
 
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0xfaf0ca, roughness: 0.78 });
-  const timberMat = new THREE.MeshStandardMaterial({ color: 0x5c3a21, roughness: 0.82 });
-  const roofMat = new THREE.MeshStandardMaterial({ color: 0x4a7c59, roughness: 0.62 });
-  const windowMat = new THREE.MeshStandardMaterial({
-    color: 0xffe66d,
-    emissive: 0xffaa00,
-    emissiveIntensity: 0.95,
+  // Grand Astral Bastion Keep Structure
+  const keepGroup = new THREE.Group();
+  keepGroup.position.set(0, 0.22, 3.2);
+  root.add(keepGroup);
+
+  const bastionStoneMat = new THREE.MeshStandardMaterial({
+    color: 0x0f172a,
+    roughness: 0.38,
+    metalness: 0.72,
+  });
+  const goldTrimMat = new THREE.MeshStandardMaterial({
+    color: 0xfbbf24,
+    emissive: 0xd97706,
+    emissiveIntensity: 0.35,
     roughness: 0.2,
+    metalness: 0.88,
+  });
+  const roofMat = new THREE.MeshStandardMaterial({
+    color: 0x0f766e,
+    roughness: 0.32,
+    metalness: 0.65,
+  });
+  const windowMat = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 1.15,
+    roughness: 0.15,
   });
 
-  const walls = new THREE.Mesh(new THREE.CylinderGeometry(1.62, 1.78, 1.95, 18), wallMat);
-  walls.position.y = 0.96;
+  // Main Octagonal Citadel Keep Walls
+  const walls = new THREE.Mesh(new THREE.CylinderGeometry(1.75, 1.95, 2.35, 8), bastionStoneMat);
+  walls.position.y = 1.15;
   walls.castShadow = true;
   walls.receiveShadow = true;
-  cottageGroup.add(walls);
+  keepGroup.add(walls);
 
-  // Scalloped Acorn Cap Roof + Chimney + Top Stem
-  const roofMesh = new THREE.Mesh(new THREE.ConeGeometry(2.32, 1.72, 18), roofMat);
-  roofMesh.position.y = 2.62;
+  // 4 Buttressed Corner Watch-Towers
+  for (let i = 0; i < 4; i++) {
+    const ang = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    const tx = Math.cos(ang) * 1.65;
+    const tz = Math.sin(ang) * 1.65;
+    const tower = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.46, 2.85, 8), bastionStoneMat);
+    tower.position.set(tx, 1.42, tz);
+    tower.castShadow = true;
+    const spire = new THREE.Mesh(new THREE.ConeGeometry(0.48, 0.95, 8), goldTrimMat);
+    spire.position.set(tx, 3.3, tz);
+    keepGroup.add(tower, spire);
+  }
+
+  // Grand Sovereign Vaulted Dome Roof + Levitating Astrolabe Finial
+  const roofMesh = new THREE.Mesh(new THREE.ConeGeometry(2.38, 1.95, 8), roofMat);
+  roofMesh.position.y = 3.25;
   roofMesh.castShadow = true;
-  cottageGroup.add(roofMesh);
+  keepGroup.add(roofMesh);
 
-  const roofStem = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.24, 0.55, 8), timberMat);
-  roofStem.position.y = 3.55;
-  cottageGroup.add(roofStem);
+  const roofCrownRing = new THREE.Mesh(new THREE.TorusGeometry(1.82, 0.08, 8, 24), goldTrimMat);
+  roofCrownRing.rotation.x = Math.PI / 2;
+  roofCrownRing.position.y = 2.35;
+  keepGroup.add(roofCrownRing);
 
-  const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.28, 1.1, 10), timberMat);
-  chimney.position.set(-1.1, 2.75, 0.4);
-  cottageGroup.add(chimney);
+  const finialCrystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.34, 0), windowMat);
+  finialCrystal.scale.set(0.8, 1.8, 0.8);
+  finialCrystal.position.y = 4.6;
+  keepGroup.add(finialCrystal);
 
-  // Round Cozy Door with Timber Arch & Glowing Window
-  const door = new THREE.Mesh(new THREE.BoxGeometry(0.74, 1.15, 0.22), timberMat);
-  door.position.set(0, 0.58, -1.66);
-  cottageGroup.add(door);
+  // Gothic Runic Sanctum Gate & Rose Window
+  const gateFrame = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.45, 0.28), goldTrimMat);
+  gateFrame.position.set(0, 0.72, -1.78);
+  const gatePortal = new THREE.Mesh(new THREE.BoxGeometry(0.72, 1.28, 0.32), bastionStoneMat);
+  gatePortal.position.set(0, 0.68, -1.8);
+  keepGroup.add(gateFrame, gatePortal);
 
-  const windowMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.16, 16), windowMat);
+  const windowMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.46, 0.18, 16), windowMat);
   windowMesh.rotation.x = Math.PI / 2;
-  windowMesh.position.set(0.96, 1.12, -1.36);
-  cottageGroup.add(windowMesh);
+  windowMesh.position.set(0, 1.75, -1.76);
+  keepGroup.add(windowMesh);
 
+  // Arcane Soul-Forge Brazier Group
   const hearthGroup = new THREE.Group();
-  hearthGroup.position.set(-2.0, 0.16, 0.5);
+  hearthGroup.position.set(-2.2, 0.22, 0.4);
   root.add(hearthGroup);
 
-  const hearthLight = new THREE.PointLight(0xff9f1c, 1.25, 11);
-  hearthLight.position.set(-2.0, 1.4, 0.5);
+  const hearthLight = new THREE.PointLight(0x38bdf8, 1.45, 12);
+  hearthLight.position.set(-2.2, 1.6, 0.4);
   root.add(hearthLight);
 
+  // Perimeter Runic Ward Obelisks Group
   const gardenGroup = new THREE.Group();
-  gardenGroup.position.set(0, 0.16, 0);
+  gardenGroup.position.set(0, 0.22, 0);
   root.add(gardenGroup);
 
+  // 4 Champion Relic Pedestals Group
   const trophyGroup = new THREE.Group();
-  trophyGroup.position.set(2.2, 0.16, 0.6);
+  trophyGroup.position.set(2.2, 0.22, 0.5);
   root.add(trophyGroup);
 
   const roofColors: Record<string, number> = {
-    moss: 0x4a7c59,
-    terracotta: 0xd66853,
-    slate: 0x457b9d,
-    sakura: 0xff8fa3,
+    moss: 0x0f766e,
+    terracotta: 0x991b1b,
+    slate: 0x1e3a8a,
+    sakura: 0x6b21a8,
   };
 
   const applyHomeCustomization = (custom: HomeBaseCustomization, trophies: TrophyStatus) => {
-    roofMat.color.setHex(roofColors[custom.roofStyle] || 0x4a7c59);
+    roofMat.color.setHex(roofColors[custom.roofStyle] || 0x0f766e);
 
     hearthGroup.clear();
     if (custom.hearthStyle === 'campfire') {
-      const logGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.9, 6);
-      for (let i = 0; i < 4; i++) {
-        const log = new THREE.Mesh(logGeo, timberMat);
-        log.rotation.z = Math.PI / 2;
-        log.rotation.y = (i * Math.PI) / 4;
-        log.position.y = 0.1;
-        hearthGroup.add(log);
-      }
+      // Sunforged War-Brazier
+      const anvilBase = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.78, 0.52, 8), bastionStoneMat);
+      anvilBase.position.y = 0.26;
+      const bowl = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.1, 8, 16), goldTrimMat);
+      bowl.rotation.x = Math.PI / 2;
+      bowl.position.y = 0.52;
       const flameMat = new THREE.MeshStandardMaterial({
-        color: 0xff9f1c,
-        emissive: 0xff5400,
-        emissiveIntensity: 1.1,
+        color: 0xfbbf24,
+        emissive: 0xea580c,
+        emissiveIntensity: 1.35,
       });
-      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.65, 8), flameMat);
-      flame.position.y = 0.42;
-      hearthGroup.add(flame);
-      hearthLight.color.setHex(0xff9f1c);
+      const flame = new THREE.Mesh(new THREE.OctahedronGeometry(0.42, 1), flameMat);
+      flame.scale.set(0.9, 1.6, 0.9);
+      flame.position.y = 0.95;
+      hearthGroup.add(anvilBase, bowl, flame);
+      hearthLight.color.setHex(0xfbbf24);
     } else if (custom.hearthStyle === 'fountain') {
-      const stoneMat = new THREE.MeshStandardMaterial({ color: 0xadb5bd, roughness: 0.7 });
+      // Astral Mana Conduit Font
+      const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.88, 0.72, 0.42, 12), bastionStoneMat);
+      basin.position.y = 0.21;
       const waterMat = new THREE.MeshStandardMaterial({
-        color: 0x48cae4,
-        emissive: 0x0096c7,
-        emissiveIntensity: 0.5,
-        roughness: 0.12,
+        color: 0x38bdf8,
+        emissive: 0x0284c7,
+        emissiveIntensity: 0.95,
+        roughness: 0.1,
       });
-      const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.7, 0.35, 16), stoneMat);
-      basin.position.y = 0.18;
-      const water = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.38, 16), waterMat);
-      water.position.y = 0.2;
-      const spire = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.7, 12), waterMat);
-      spire.position.y = 0.65;
-      hearthGroup.add(basin, water, spire);
-      hearthLight.color.setHex(0x48cae4);
+      const spire = new THREE.Mesh(new THREE.OctahedronGeometry(0.38, 0), waterMat);
+      spire.scale.set(0.8, 2.1, 0.8);
+      spire.position.y = 0.95;
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.04, 8, 20), goldTrimMat);
+      ring.rotation.x = Math.PI / 3;
+      ring.position.y = 0.95;
+      hearthGroup.add(basin, spire, ring);
+      hearthLight.color.setHex(0x38bdf8);
     } else {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 1.6, 8), timberMat);
-      post.position.y = 0.8;
+      // Celestial Astrolabe Beacon Pylon
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.24, 1.65, 8), bastionStoneMat);
+      post.position.y = 0.82;
       const orbMat = new THREE.MeshStandardMaterial({
-        color: 0xffe66d,
-        emissive: 0xffb703,
-        emissiveIntensity: 1.2,
+        color: 0xc084fc,
+        emissive: 0x7e22ce,
+        emissiveIntensity: 1.35,
       });
-      const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.32, 1), orbMat);
-      orb.position.y = 1.75;
-      hearthGroup.add(post, orb);
-      hearthLight.color.setHex(0xffe66d);
+      const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.36, 1), orbMat);
+      orb.position.y = 1.85;
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.035, 8, 20), goldTrimMat);
+      ring.position.y = 1.85;
+      hearthGroup.add(post, orb, ring);
+      hearthLight.color.setHex(0xc084fc);
     }
 
     gardenGroup.clear();
     for (let i = 0; i < 8; i++) {
       const ang = (i / 8) * Math.PI * 2;
-      const gx = Math.cos(ang) * 5.2;
-      const gz = Math.sin(ang) * 5.2;
+      const gx = Math.cos(ang) * 5.25;
+      const gz = Math.sin(ang) * 5.25;
+
+      const plinth = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 0.28, 6), bastionStoneMat);
+      plinth.position.set(gx, 0.14, gz);
+      gardenGroup.add(plinth);
 
       if (custom.gardenStyle === 'flowers') {
-        const flMat = new THREE.MeshStandardMaterial({
-          color: i % 2 === 0 ? 0xffd166 : 0xff8fa3,
-          roughness: 0.4,
+        const shardMat = new THREE.MeshStandardMaterial({
+          color: i % 2 === 0 ? 0xfbbf24 : 0x38bdf8,
+          emissive: i % 2 === 0 ? 0xd97706 : 0x0284c7,
+          emissiveIntensity: 0.75,
+          roughness: 0.2,
         });
-        const fl = new THREE.Mesh(new THREE.DodecahedronGeometry(0.24, 0), flMat);
-        fl.position.set(gx, 0.24, gz);
-        gardenGroup.add(fl);
+        const obelisk = new THREE.Mesh(new THREE.OctahedronGeometry(0.24, 0), shardMat);
+        obelisk.scale.set(0.75, 1.85, 0.75);
+        obelisk.position.set(gx, 0.58, gz);
+        gardenGroup.add(obelisk);
       } else if (custom.gardenStyle === 'mushrooms') {
-        const shroomMat = new THREE.MeshStandardMaterial({
-          color: 0x06d6a0,
-          emissive: 0x06d6a0,
-          emissiveIntensity: 0.5,
+        const wardMat = new THREE.MeshStandardMaterial({
+          color: 0x2dd4bf,
+          emissive: 0x0d9488,
+          emissiveIntensity: 0.85,
         });
-        const cap = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.35, 8), shroomMat);
-        cap.position.set(gx, 0.35, gz);
-        gardenGroup.add(cap);
+        const crystal = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.65, 6), wardMat);
+        crystal.position.set(gx, 0.56, gz);
+        gardenGroup.add(crystal);
       } else {
-        const rockMat = new THREE.MeshStandardMaterial({ color: 0x6c757d, roughness: 0.85 });
-        const c1 = new THREE.Mesh(new THREE.DodecahedronGeometry(0.28, 0), rockMat);
-        c1.position.set(gx, 0.2, gz);
-        const c2 = new THREE.Mesh(new THREE.DodecahedronGeometry(0.18, 0), rockMat);
-        c2.position.set(gx, 0.48, gz);
-        gardenGroup.add(c1, c2);
+        const monolith = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.78, 0.28), goldTrimMat);
+        monolith.position.set(gx, 0.52, gz);
+        gardenGroup.add(monolith);
       }
     }
 
     trophyGroup.clear();
-    const pedMat = new THREE.MeshStandardMaterial({ color: 0xd8e2dc, roughness: 0.7 });
+    const pedMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b,
+      roughness: 0.35,
+      metalness: 0.75,
+    });
     const goldMat = new THREE.MeshStandardMaterial({
-      color: 0xffd700,
-      emissive: 0xff9900,
-      emissiveIntensity: 0.4,
-      metalness: 0.7,
-      roughness: 0.2,
+      color: 0xfbbf24,
+      emissive: 0xd97706,
+      emissiveIntensity: 0.65,
+      metalness: 0.9,
+      roughness: 0.15,
     });
     const lockedMat = new THREE.MeshStandardMaterial({
-      color: 0x495057,
-      roughness: 0.8,
+      color: 0x334155,
+      roughness: 0.75,
       transparent: true,
-      opacity: 0.4,
+      opacity: 0.45,
     });
 
     const trophyList = [
@@ -882,21 +1040,21 @@ export function createHomeBaseModel(
     ];
 
     trophyList.forEach((t, idx) => {
-      const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.28, 0.55, 8), pedMat);
-      ped.position.set(t.offset[0], 0.28, t.offset[1]);
+      const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.3, 0.62, 8), pedMat);
+      ped.position.set(t.offset[0], 0.31, t.offset[1]);
       trophyGroup.add(ped);
 
       const statGeo =
         idx === 0
-          ? new THREE.OctahedronGeometry(0.22, 0)
+          ? new THREE.OctahedronGeometry(0.24, 0)
           : idx === 1
-          ? new THREE.TorusKnotGeometry(0.14, 0.05, 24, 6)
+          ? new THREE.TorusKnotGeometry(0.15, 0.05, 24, 6)
           : idx === 2
-          ? new THREE.DodecahedronGeometry(0.2, 0)
-          : new THREE.ConeGeometry(0.22, 0.4, 6);
+          ? new THREE.DodecahedronGeometry(0.22, 0)
+          : new THREE.ConeGeometry(0.24, 0.46, 6);
 
       const stat = new THREE.Mesh(statGeo, t.unlocked ? goldMat : lockedMat);
-      stat.position.set(t.offset[0], 0.78, t.offset[1]);
+      stat.position.set(t.offset[0], 0.84, t.offset[1]);
       trophyGroup.add(stat);
     });
   };
@@ -916,8 +1074,9 @@ export function createHomeBaseModel(
 }
 
 /**
- * 1. Spore-Cap Hopper (Puffer): Charming multi-part mushroom creature with under-cap gill pleats,
- * glowing biome spots, rosy cheeks, catchlight eyes, top blossom crest, and waddling feet.
+ * 1. Void Stalker Fiend (Replaces Puffer):
+ * Menacing 12-part hunched Void-Reaper Construct with segmented obsidian carapace,
+ * glowing crimson-violet visor eyes, twin curved plasma-scythe foreblades, and dorsal crystal spines.
  */
 export function createPufferModel(biome: StageBiomeTheme = getStageBiomeTheme(1)): {
   root: THREE.Group;
@@ -927,116 +1086,98 @@ export function createPufferModel(biome: StageBiomeTheme = getStageBiomeTheme(1)
 } {
   const root = new THREE.Group();
 
-  const stemMat = new THREE.MeshStandardMaterial({
-    color: 0xf4f1de,
-    roughness: 0.55,
-    metalness: 0.04,
+  const chassisMat = new THREE.MeshStandardMaterial({
+    color: 0x0f172a,
+    roughness: 0.32,
+    metalness: 0.82,
   });
-  const gillMat = new THREE.MeshStandardMaterial({
-    color: 0xe0afa0,
-    roughness: 0.72,
-  });
-  const capMat = new THREE.MeshStandardMaterial({
+  const carapaceMat = new THREE.MeshStandardMaterial({
     color: biome.pufferCapHex,
-    roughness: 0.34,
-    metalness: 0.08,
+    roughness: 0.25,
+    metalness: 0.72,
   });
-  const spotMat = new THREE.MeshStandardMaterial({
+  const plasmaMat = new THREE.MeshStandardMaterial({
     color: biome.pufferSpotHex,
     emissive: biome.pufferSpotHex,
-    emissiveIntensity: 0.42,
-    roughness: 0.25,
+    emissiveIntensity: 1.15,
+    roughness: 0.15,
+    side: THREE.DoubleSide,
   });
-  const eyeMat = new THREE.MeshStandardMaterial({
-    color: 0x1b091c,
-    roughness: 0.12,
+  const visorMat = new THREE.MeshStandardMaterial({
+    color: 0xf43f5e,
+    emissive: 0xe11d48,
+    emissiveIntensity: 1.4,
   });
-  const pupilMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  const cheekMat = new THREE.MeshStandardMaterial({ color: 0xff8fa3, roughness: 0.5 });
 
-  // Plump Stem + Waddling Feet + Little Stubby Hands
-  const stemGeo = new THREE.CylinderGeometry(0.28, 0.42, 0.58, 16);
-  const stem = new THREE.Mesh(stemGeo, stemMat);
-  stem.position.y = 0.34;
+  // Lower Armored Locust/Stalker Chassis (`stem`) + Thruster Legs
+  const stemGeo = new THREE.CylinderGeometry(0.32, 0.22, 0.62, 8);
+  const stem = new THREE.Mesh(stemGeo, chassisMat);
+  stem.position.y = 0.38;
   stem.castShadow = true;
   root.add(stem);
 
-  const footGeo = new THREE.SphereGeometry(0.135, 10, 8);
-  footGeo.scale(1.0, 0.55, 1.35);
-  const lf = new THREE.Mesh(footGeo, gillMat);
-  lf.position.set(-0.2, 0.08, 0.08);
-  const rf = new THREE.Mesh(footGeo, gillMat);
-  rf.position.set(0.2, 0.08, 0.08);
-  root.add(lf, rf);
+  for (const side of [-1, 1]) {
+    const leg = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.48, 6), chassisMat);
+    leg.position.set(side * 0.28, 0.22, -0.05);
+    leg.rotation.z = side * 0.35;
+    root.add(leg);
 
-  const handGeo = new THREE.SphereGeometry(0.095, 8, 8);
-  const lh = new THREE.Mesh(handGeo, stemMat);
-  lh.position.set(-0.36, 0.36, 0.1);
-  const rh = new THREE.Mesh(handGeo, stemMat);
-  rh.position.set(0.36, 0.36, 0.1);
-  root.add(lh, rh);
+    // Twin Curved Plasma-Scythe Forearms
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.36, 0.12), carapaceMat);
+    arm.position.set(side * 0.42, 0.56, 0.22);
+    arm.rotation.x = 0.65;
+    const scytheShape = new THREE.Shape();
+    scytheShape.moveTo(0, 0);
+    scytheShape.quadraticCurveTo(0.22, 0.28, 0.05, 0.62);
+    scytheShape.quadraticCurveTo(-0.06, 0.28, 0, 0);
+    const scythe = new THREE.Mesh(new THREE.ShapeGeometry(scytheShape), plasmaMat);
+    scythe.position.set(side * 0.44, 0.42, 0.34);
+    scythe.rotation.y = Math.PI / 2;
+    scythe.rotation.x = 0.45;
+    root.add(arm, scythe);
+  }
 
-  // Under-cap pleated gill collar
-  const gillRing = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.09, 10, 20), gillMat);
-  gillRing.rotation.x = Math.PI / 2;
-  gillRing.position.y = 0.6;
-  root.add(gillRing);
-
-  // Sculpted Mushroom Cap + Top Glowing Crown Sprout
-  const capGeo = new THREE.SphereGeometry(0.6, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.56);
-  const cap = new THREE.Mesh(capGeo, capMat);
-  cap.position.y = 0.58;
+  // Hunched Armored Carapace Hood (`cap`) + Dorsal Void Spines
+  const capGeo = new THREE.DodecahedronGeometry(0.56, 1);
+  capGeo.scale(1.08, 0.78, 1.18);
+  const cap = new THREE.Mesh(capGeo, carapaceMat);
+  cap.position.set(0, 0.76, -0.04);
   cap.castShadow = true;
   root.add(cap);
 
-  const topCrest = new THREE.Mesh(new THREE.OctahedronGeometry(0.13, 0), spotMat);
-  topCrest.position.set(0, 1.22, 0);
-  root.add(topCrest);
-
-  // Raised Bioluminescent Spore Spots
-  const dotGeo = new THREE.SphereGeometry(0.115, 10, 10);
-  dotGeo.scale(1, 0.5, 1);
+  const spineGeo = new THREE.OctahedronGeometry(0.15, 0);
+  spineGeo.scale(0.65, 1.85, 0.65);
   [
-    [-0.26, 0.95, 0.26],
-    [0.28, 0.98, 0.16],
-    [0.0, 1.1, -0.2],
-    [-0.22, 0.92, -0.28],
-    [0.22, 0.88, -0.25],
+    [0, 1.16, -0.08],
+    [-0.24, 1.04, -0.22],
+    [0.24, 1.04, -0.22],
   ].forEach(([x, y, z]) => {
-    const dot = new THREE.Mesh(dotGeo, spotMat);
-    dot.position.set(x, y, z);
-    root.add(dot);
+    const spine = new THREE.Mesh(spineGeo, plasmaMat);
+    spine.position.set(x, y, z);
+    spine.rotation.x = -0.35;
+    root.add(spine);
   });
 
-  // Big Charming Eyes with White Catchlights + Rosy Cheeks
-  const eyeGeo = new THREE.SphereGeometry(0.082, 10, 10);
-  const e1 = new THREE.Mesh(eyeGeo, eyeMat);
-  e1.position.set(-0.15, 0.45, 0.35);
-  const e2 = new THREE.Mesh(eyeGeo, eyeMat);
-  e2.position.set(0.15, 0.45, 0.35);
-  const p1 = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 6), pupilMat);
-  p1.position.set(-0.13, 0.47, 0.42);
-  const p2 = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 6), pupilMat);
-  p2.position.set(0.17, 0.47, 0.42);
+  // Menacing Slit Visor Eyes
+  const eyeGeo = new THREE.BoxGeometry(0.18, 0.055, 0.08);
+  const e1 = new THREE.Mesh(eyeGeo, visorMat);
+  e1.position.set(-0.16, 0.68, 0.48);
+  e1.rotation.z = -0.22;
+  const e2 = new THREE.Mesh(eyeGeo, visorMat);
+  e2.position.set(0.16, 0.68, 0.48);
+  e2.rotation.z = 0.22;
+  root.add(e1, e2);
 
-  const c1 = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), cheekMat);
-  c1.scale.set(1.2, 0.65, 0.4);
-  c1.position.set(-0.24, 0.38, 0.33);
-  const c2 = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), cheekMat);
-  c2.scale.set(1.2, 0.65, 0.4);
-  c2.position.set(0.24, 0.38, 0.33);
-
-  root.add(e1, e2, p1, p2, c1, c2);
-
-  const shadow = createContactShadow(0.66);
+  const shadow = createContactShadow(0.68);
   root.add(shadow);
 
   return { root, cap, stem, shadow };
 }
 
 /**
- * 2. Crystal-Shell Beetle Roller: Charming armored forest beetle with glowing crystal back spines,
- * curved feeler antennae, expressive glowing eyes, and clear ground charge path telegraph.
+ * 2. Obsidian Siege Juggernaut (Replaces Roller):
+ * Heavy war-sphere plated in interlocking spiked dark-steel bands, glowing molten core fissures,
+ * horned iron war-mask, and a tactical laser charge path telegraph on the ground.
  */
 export function createRollerModel(biome: StageBiomeTheme = getStageBiomeTheme(1)): {
   root: THREE.Group;
@@ -1048,83 +1189,79 @@ export function createRollerModel(biome: StageBiomeTheme = getStageBiomeTheme(1)
 
   const shellMat = new THREE.MeshStandardMaterial({
     color: biome.rollerShellHex,
-    roughness: 0.55,
-    metalness: 0.22,
+    roughness: 0.28,
+    metalness: 0.85,
   });
   const armorBandMat = new THREE.MeshStandardMaterial({
-    color: 0x2b180d,
-    roughness: 0.45,
-    metalness: 0.3,
+    color: 0x090d16,
+    roughness: 0.35,
+    metalness: 0.88,
   });
   const glowMat = new THREE.MeshStandardMaterial({
     color: biome.rollerGlowHex,
     emissive: biome.rollerGlowHex,
-    emissiveIntensity: 0.85,
-    roughness: 0.18,
+    emissiveIntensity: 1.25,
+    roughness: 0.15,
   });
 
-  const ballGeo = new THREE.SphereGeometry(0.66, 18, 16);
+  const ballGeo = new THREE.IcosahedronGeometry(0.68, 2);
   const ball = new THREE.Mesh(ballGeo, shellMat);
-  ball.position.y = 0.66;
+  ball.position.y = 0.68;
   ball.castShadow = true;
   root.add(ball);
 
-  // Interlocking Armored Bands attached inside `ball` so they spin when rolling!
-  const band1 = new THREE.Mesh(new THREE.TorusGeometry(0.64, 0.068, 10, 20), armorBandMat);
+  // Interlocking Spiked Iron War-Bands inside `ball`
+  const band1 = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.075, 8, 20), armorBandMat);
   band1.rotation.y = Math.PI / 2;
-  const band2 = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.055, 10, 20), armorBandMat);
+  const band2 = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.06, 8, 20), glowMat);
   band2.position.x = 0.28;
   band2.rotation.y = Math.PI / 2;
-  const band3 = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.055, 10, 20), armorBandMat);
+  const band3 = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.06, 8, 20), glowMat);
   band3.position.x = -0.28;
   band3.rotation.y = Math.PI / 2;
   ball.add(band1, band2, band3);
 
-  // Glowing Crystal Gems on Shell
-  const gemGeo = new THREE.OctahedronGeometry(0.17, 0);
-  gemGeo.scale(0.8, 1.5, 0.8);
-  gemGeo.translate(0, 0.14, 0);
+  // Heavy Siege Spikes & Molten Core Nodes
+  const spikeGeo = new THREE.ConeGeometry(0.14, 0.42, 5);
+  spikeGeo.translate(0, 0.18, 0);
 
   const spikeAngles = [
-    [0, 0, 0.65],
-    [0, 0, -0.65],
-    [0.65, 0, 0],
-    [-0.65, 0, 0],
-    [0.45, 0.45, 0.45],
-    [-0.45, 0.45, -0.45],
-    [0.45, -0.45, -0.45],
-    [-0.45, -0.45, 0.45],
-    [0, 0.65, 0],
+    [0, 0, 0.66],
+    [0, 0, -0.66],
+    [0.66, 0, 0],
+    [-0.66, 0, 0],
+    [0.46, 0.46, 0.46],
+    [-0.46, 0.46, -0.46],
+    [0.46, -0.46, -0.46],
+    [-0.46, -0.46, 0.46],
+    [0, 0.66, 0],
   ];
 
   spikeAngles.forEach(([x, y, z], idx) => {
-    const spike = new THREE.Mesh(gemGeo, idx % 2 === 0 ? glowMat : armorBandMat);
+    const spike = new THREE.Mesh(spikeGeo, idx % 2 === 0 ? glowMat : armorBandMat);
     spike.position.set(x, y, z);
     spike.lookAt(x * 2, y * 2, z * 2);
     spike.rotation.x += Math.PI / 2;
     ball.add(spike);
   });
 
-  // Cute Feeler Antennae + Glowing Eyes on Front
-  const antGeo = new THREE.CylinderGeometry(0.025, 0.04, 0.38, 6);
-  const antL = new THREE.Mesh(antGeo, armorBandMat);
-  antL.position.set(-0.24, 1.28, 0.35);
-  antL.rotation.set(0.4, 0, 0.35);
-  const antR = new THREE.Mesh(antGeo, armorBandMat);
-  antR.position.set(0.24, 1.28, 0.35);
-  antR.rotation.set(0.4, 0, -0.35);
-  root.add(antL, antR);
+  // Horned Iron War-Crest & Slit Visor on Front
+  const hornGeo = new THREE.ConeGeometry(0.08, 0.44, 6);
+  const hornL = new THREE.Mesh(hornGeo, armorBandMat);
+  hornL.position.set(-0.32, 1.24, 0.32);
+  hornL.rotation.set(0.45, 0, 0.42);
+  const hornR = new THREE.Mesh(hornGeo, armorBandMat);
+  hornR.position.set(0.32, 1.24, 0.32);
+  hornR.rotation.set(0.45, 0, -0.42);
+  root.add(hornL, hornR);
 
-  const eyeGeo = new THREE.SphereGeometry(0.105, 10, 10);
-  const le = new THREE.Mesh(eyeGeo, glowMat);
-  le.position.set(-0.22, 0.78, 0.58);
-  const re = new THREE.Mesh(eyeGeo, glowMat);
-  re.position.set(0.22, 0.78, 0.58);
-  root.add(le, re);
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.09, 0.14), glowMat);
+  visor.position.set(0, 0.78, 0.62);
+  root.add(visor);
 
-  const telGeo = new THREE.PlaneGeometry(1.25, 8.2);
+  const telGeo = new THREE.PlaneGeometry(1.35, 8.4);
   const telMat = new THREE.MeshBasicMaterial({
-    color: 0xff9f1c,
+    color: 0xef4444,
     transparent: true,
     opacity: 0.0,
     side: THREE.DoubleSide,
@@ -1132,19 +1269,20 @@ export function createRollerModel(biome: StageBiomeTheme = getStageBiomeTheme(1)
   });
   const telegraph = new THREE.Mesh(telGeo, telMat);
   telegraph.rotation.x = -Math.PI / 2;
-  telegraph.position.set(0, 0.03, 4.1);
+  telegraph.position.set(0, 0.04, 4.2);
   telegraph.renderOrder = 2;
   root.add(telegraph);
 
-  const shadow = createContactShadow(0.84);
+  const shadow = createContactShadow(0.86);
   root.add(shadow);
 
   return { root, ball, telegraph, shadow };
 }
 
 /**
- * 3. Luminous Butterfly Sprite: Charming woodland wisp with star-crown,
- * 4 articulated butterfly wings, spirit tail, and orbiting pollen sparkles.
+ * 3. Abyssal Archon Wraith (Replaces Sprite):
+ * Eldritch floating void-caster with a fractured dark-crystal core, eclipse halo crown,
+ * 4 levitating geometric runic blade-wings, and orbiting void focus prisms.
  */
 export function createSpriteModel(biome: StageBiomeTheme = getStageBiomeTheme(1)): {
   root: THREE.Group;
@@ -1157,98 +1295,105 @@ export function createSpriteModel(biome: StageBiomeTheme = getStageBiomeTheme(1)
   const orbMat = new THREE.MeshStandardMaterial({
     color: biome.spriteBodyHex,
     emissive: biome.spriteBodyHex,
-    emissiveIntensity: 0.55,
-    roughness: 0.22,
+    emissiveIntensity: 0.75,
+    roughness: 0.18,
+    metalness: 0.65,
   });
   const crownMat = new THREE.MeshStandardMaterial({
-    color: 0xffd166,
-    emissive: 0xff9f1c,
-    emissiveIntensity: 0.65,
-    roughness: 0.25,
-    metalness: 0.4,
+    color: 0xfbbf24,
+    emissive: 0xd97706,
+    emissiveIntensity: 0.85,
+    roughness: 0.2,
+    metalness: 0.85,
   });
   const wingMat = new THREE.MeshStandardMaterial({
     color: biome.spriteWingHex,
     emissive: biome.spriteWingHex,
-    emissiveIntensity: 0.42,
+    emissiveIntensity: 0.85,
     transparent: true,
-    opacity: 0.82,
-    roughness: 0.16,
+    opacity: 0.88,
+    roughness: 0.12,
+    metalness: 0.5,
     side: THREE.DoubleSide,
   });
   const eyeMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
-    emissive: 0xffe66d,
-    emissiveIntensity: 0.95,
+    emissive: 0x38bdf8,
+    emissiveIntensity: 1.4,
   });
 
-  const orbGeo = new THREE.SphereGeometry(0.42, 18, 16);
+  // Faceted Archon Core Bust (`orb`)
+  const orbGeo = new THREE.OctahedronGeometry(0.46, 1);
   const orb = new THREE.Mesh(orbGeo, orbMat);
-  orb.position.y = 1.42;
+  orb.position.y = 1.45;
   orb.castShadow = true;
   root.add(orb);
 
-  // Tapered Spirit Tail & Star Crown Halo
-  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.62, 10), orbMat);
+  // Armored Spire Tail & Eclipse Halo Crown
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.72, 6), orbMat);
   tail.rotation.x = Math.PI;
-  tail.position.set(0, -0.42, -0.05);
+  tail.position.set(0, -0.48, -0.04);
   orb.add(tail);
 
-  const halo = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.035, 8, 18), crownMat);
-  halo.rotation.x = Math.PI / 2;
-  halo.position.set(0, 0.48, 0);
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.035, 8, 20), crownMat);
+  halo.rotation.x = Math.PI / 2.4;
+  halo.position.set(0, 0.52, -0.06);
   orb.add(halo);
 
-  // Orbiting Pollen Sparkle Shards
+  // Orbiting Void Focus Prisms
   for (let i = 0; i < 3; i++) {
     const ang = (i / 3) * Math.PI * 2;
-    const shard = new THREE.Mesh(new THREE.OctahedronGeometry(0.085, 0), crownMat);
-    shard.position.set(Math.cos(ang) * 0.62, Math.sin(ang * 2) * 0.12, Math.sin(ang) * 0.62);
+    const shard = new THREE.Mesh(new THREE.OctahedronGeometry(0.095, 0), crownMat);
+    shard.scale.set(0.7, 1.6, 0.7);
+    shard.position.set(Math.cos(ang) * 0.66, Math.sin(ang * 2) * 0.14, Math.sin(ang) * 0.66);
     orb.add(shard);
   }
 
-  const eyeGeo = new THREE.SphereGeometry(0.08, 10, 10);
-  eyeGeo.scale(1.15, 0.9, 0.6);
+  const eyeGeo = new THREE.BoxGeometry(0.14, 0.045, 0.06);
   const e1 = new THREE.Mesh(eyeGeo, eyeMat);
-  e1.position.set(-0.15, 1.46, 0.38);
+  e1.position.set(-0.14, 1.48, 0.42);
+  e1.rotation.z = -0.18;
   const e2 = new THREE.Mesh(eyeGeo, eyeMat);
-  e2.position.set(0.15, 1.46, 0.38);
+  e2.position.set(0.14, 1.48, 0.42);
+  e2.rotation.z = 0.18;
   root.add(e1, e2);
 
-  // 4 Articulated Butterfly Wings (Upper + Lower pairs)
+  // 4 Levitating Geometric Runic Blade-Wings
   const wings = new THREE.Group();
-  wings.position.set(0, 1.46, -0.22);
+  wings.position.set(0, 1.48, -0.24);
 
   const wingShape = new THREE.Shape();
   wingShape.moveTo(0, 0);
-  wingShape.quadraticCurveTo(0.48, 0.42, 0.88, 0.16);
-  wingShape.quadraticCurveTo(0.42, -0.24, 0, 0);
+  wingShape.lineTo(0.55, 0.48);
+  wingShape.lineTo(0.98, 0.18);
+  wingShape.lineTo(0.45, -0.18);
+  wingShape.closePath();
   const wingGeo = new THREE.ShapeGeometry(wingShape);
 
   const lw = new THREE.Mesh(wingGeo, wingMat);
-  lw.rotation.z = 0.25;
+  lw.rotation.z = 0.28;
   const rw = new THREE.Mesh(wingGeo, wingMat);
-  rw.rotation.z = Math.PI - 0.25;
+  rw.rotation.z = Math.PI - 0.28;
   rw.scale.y = -1;
 
   const lwLower = new THREE.Mesh(wingGeo, wingMat);
-  lwLower.scale.set(0.68, 0.68, 0.68);
-  lwLower.rotation.z = -0.28;
+  lwLower.scale.set(0.72, 0.72, 0.72);
+  lwLower.rotation.z = -0.32;
   const rwLower = new THREE.Mesh(wingGeo, wingMat);
-  rwLower.scale.set(0.68, -0.68, 0.68);
-  rwLower.rotation.z = Math.PI + 0.28;
+  rwLower.scale.set(0.72, -0.72, 0.72);
+  rwLower.rotation.z = Math.PI + 0.32;
 
   wings.add(lw, rw, lwLower, rwLower);
   root.add(wings);
 
-  const shadow = createContactShadow(0.55);
+  const shadow = createContactShadow(0.58);
   root.add(shadow);
 
   return { root, orb, wings, shadow };
 }
 
 /**
- * Ancient Sun Shrine: 4 scattered across grove with astrolabe rings & Solar Tether Beam to Boss
+ * Ancient Astral Obelisk Shrine: 4 scattered across realm with astrolabe rings & Astral Tether Beam to Boss
  */
 export function createShrineModel(name: string): {
   root: THREE.Group;
@@ -1261,126 +1406,133 @@ export function createShrineModel(name: string): {
   root.name = name;
 
   const stoneMat = new THREE.MeshStandardMaterial({
-    color: 0x7a8276,
-    roughness: 0.82,
-    metalness: 0.08,
+    color: 0x1e293b,
+    roughness: 0.42,
+    metalness: 0.72,
   });
-  const mossMat = new THREE.MeshStandardMaterial({
-    color: 0x40916c,
-    roughness: 0.88,
-    metalness: 0.02,
+  const goldTrimMat = new THREE.MeshStandardMaterial({
+    color: 0xfbbf24,
+    emissive: 0xd97706,
+    emissiveIntensity: 0.35,
+    roughness: 0.22,
+    metalness: 0.85,
   });
   const runeMat = new THREE.MeshStandardMaterial({
-    color: 0x555555,
-    emissive: 0x221100,
-    emissiveIntensity: 0.15,
-    roughness: 0.28,
-    metalness: 0.4,
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 0.35,
+    roughness: 0.2,
+    metalness: 0.6,
   });
   const crystalMat = new THREE.MeshStandardMaterial({
-    color: 0xffd166,
-    emissive: 0xff8800,
-    emissiveIntensity: 0.55,
-    roughness: 0.12,
-    metalness: 0.3,
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 0.95,
+    roughness: 0.1,
+    metalness: 0.4,
   });
 
-  // Stepped Octagonal Sanctuary Base
-  const base1 = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.75, 0.42, 8), stoneMat);
-  base1.position.y = 0.21;
+  // Stepped Octagonal Obsidian Dais
+  const base1 = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.78, 0.44, 8), stoneMat);
+  base1.position.y = 0.22;
   base1.receiveShadow = true;
   root.add(base1);
 
-  const base2 = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 2.1, 0.32, 8), mossMat);
-  base2.position.y = 0.56;
+  const base2 = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 2.12, 0.34, 8), goldTrimMat);
+  base2.position.y = 0.58;
   base2.receiveShadow = true;
   root.add(base2);
 
-  // 4 Carved Stone Pillars + Top Crown Arch Ring
-  const pillarGeo = new THREE.CylinderGeometry(0.22, 0.28, 2.2, 8);
+  // 4 Carved Runic Obelisk Pillars + Crown Astrolabe Arch
+  const pillarGeo = new THREE.BoxGeometry(0.36, 2.4, 0.36);
   const angles = [0, Math.PI / 2, Math.PI, (Math.PI * 3) / 2];
   angles.forEach((ang) => {
     const pillar = new THREE.Mesh(pillarGeo, stoneMat);
-    pillar.position.set(Math.cos(ang) * 1.55, 1.6, Math.sin(ang) * 1.55);
+    pillar.position.set(Math.cos(ang) * 1.55, 1.7, Math.sin(ang) * 1.55);
+    pillar.rotation.y = ang;
     pillar.castShadow = true;
     root.add(pillar);
   });
 
-  const crownArch = new THREE.Mesh(new THREE.TorusGeometry(1.55, 0.16, 8, 24), stoneMat);
+  const crownArch = new THREE.Mesh(new THREE.TorusGeometry(1.55, 0.14, 8, 24), goldTrimMat);
   crownArch.rotation.x = Math.PI / 2;
-  crownArch.position.y = 2.7;
+  crownArch.position.y = 2.85;
   crownArch.castShadow = true;
   root.add(crownArch);
 
-  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.68, 1), crystalMat);
+  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.72, 0), crystalMat);
+  crystal.scale.set(0.85, 1.45, 0.85);
   crystal.position.y = 2.15;
   root.add(crystal);
 
-  const ringGeo = new THREE.TorusGeometry(1.32, 0.085, 10, 28);
+  const ringGeo = new THREE.TorusGeometry(1.34, 0.08, 10, 28);
   ringGeo.rotateX(Math.PI / 2);
   const ring = new THREE.Mesh(ringGeo, runeMat);
-  ring.position.y = 0.78;
+  ring.position.y = 0.82;
   root.add(ring);
 
-  // Solar Energy Tether Beam (Visible once Shrine is restored, pointing to Central Boss)
-  const beamGeo = new THREE.CylinderGeometry(0.08, 0.14, 1.0, 8);
+  // Astral Energy Tether Beam pointing to Central Titan Boss
+  const beamGeo = new THREE.CylinderGeometry(0.09, 0.16, 1.0, 8);
   beamGeo.rotateX(Math.PI / 2);
   const beamMat = new THREE.MeshBasicMaterial({
-    color: 0xffd166,
+    color: 0x38bdf8,
     transparent: true,
-    opacity: 0.75,
+    opacity: 0.82,
   });
   const beamMesh = new THREE.Mesh(beamGeo, beamMat);
   beamMesh.position.y = 2.15;
   beamMesh.visible = false;
   root.add(beamMesh);
 
-  const light = new THREE.PointLight(0xffa500, 0.6, 9);
+  const light = new THREE.PointLight(0x38bdf8, 0.85, 10);
   light.position.set(0, 2.2, 0);
   root.add(light);
 
-  const shadow = createContactShadow(2.35);
+  const shadow = createContactShadow(2.4);
   root.add(shadow);
 
   return { root, crystal, ring, beamMesh, light };
 }
 
 /**
- * Sun-Seed Pickup item
+ * Astral Starlight Shard Pickup (Replaces Sun-Seed)
  */
 export function createSunSeedModel(): { root: THREE.Group; mesh: THREE.Mesh } {
   const root = new THREE.Group();
 
   const seedMat = new THREE.MeshStandardMaterial({
-    color: 0xffd700,
-    emissive: 0xff9900,
-    emissiveIntensity: 0.95,
-    roughness: 0.15,
-    metalness: 0.3,
+    color: 0xfbbf24,
+    emissive: 0xd97706,
+    emissiveIntensity: 1.15,
+    roughness: 0.12,
+    metalness: 0.65,
   });
 
-  const geo = new THREE.OctahedronGeometry(0.36, 1);
+  const geo = new THREE.OctahedronGeometry(0.38, 0);
+  geo.scale(0.78, 1.45, 0.78);
   const mesh = new THREE.Mesh(geo, seedMat);
-  mesh.position.y = 0.52;
+  mesh.position.y = 0.56;
   root.add(mesh);
 
-  const haloGeo = new THREE.TorusGeometry(0.52, 0.035, 8, 20);
-  const haloMat = new THREE.MeshBasicMaterial({ color: 0xffea79, transparent: true, opacity: 0.75 });
+  const haloGeo = new THREE.TorusGeometry(0.54, 0.032, 8, 22);
+  const haloMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.82 });
   const halo = new THREE.Mesh(haloGeo, haloMat);
-  halo.position.y = 0.52;
+  halo.position.y = 0.56;
   halo.rotation.x = Math.PI / 3;
   root.add(halo);
 
-  const shadow = createContactShadow(0.42);
+  const shadow = createContactShadow(0.44);
   root.add(shadow);
 
   return { root, mesh };
 }
 
 /**
- * 4. Stage Guardian Colossus (Central Guardian Boss at x: 0, z: 0):
- * 16-part Ancient Forest Guardian with gnarled roots, carved bark face, glowing eyes,
- * articulated pauldron arms, seasonal blossom/crystal antler crown, and rotating Rune Barrier Shield!
+ * 4. Malakor, the Eclipse Titan (Central Colossus Boss at x: 0, z: 0):
+ * 18-part Celestial-Void Armored Titan with obsidian leg greaves, sculpted war-cuirass,
+ * horned sovereign helm, blazing eyes, exposed spinning Astral Singularity Core,
+ * articulated war-gauntlets with plasma claws, levitating dorsal monolith crown,
+ * and rotating Hex-Runic Aegis Shield Ring!
  */
 export function createBossModel(): {
   root: THREE.Group;
@@ -1396,101 +1548,113 @@ export function createBossModel(): {
   const root = new THREE.Group();
 
   const barkMat = new THREE.MeshStandardMaterial({
-    color: 0x3a2314,
-    roughness: 0.84,
-    metalness: 0.08,
+    color: 0x0f172a,
+    roughness: 0.28,
+    metalness: 0.84,
   });
   const darkBarkMat = new THREE.MeshStandardMaterial({
-    color: 0x221209,
-    roughness: 0.65,
-    metalness: 0.15,
+    color: 0x090d16,
+    roughness: 0.35,
+    metalness: 0.88,
   });
   const mossShoulderMat = new THREE.MeshStandardMaterial({
-    color: 0x2d6a4f,
-    roughness: 0.72,
+    color: 0xf59e0b,
+    emissive: 0xb45309,
+    emissiveIntensity: 0.32,
+    roughness: 0.22,
+    metalness: 0.88,
   });
   const crownGemMat = new THREE.MeshStandardMaterial({
-    color: 0xffd166,
-    emissive: 0xff9f1c,
-    emissiveIntensity: 0.65,
-    roughness: 0.25,
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 0.95,
+    roughness: 0.15,
   });
   const coreMat = new THREE.MeshStandardMaterial({
-    color: 0x9d4edd,
-    emissive: 0x5a189a,
-    emissiveIntensity: 0.85,
-    roughness: 0.18,
-    metalness: 0.3,
+    color: 0xef4444,
+    emissive: 0xdc2626,
+    emissiveIntensity: 1.25,
+    roughness: 0.12,
+    metalness: 0.5,
   });
   const eyeMat = new THREE.MeshStandardMaterial({
-    color: 0xff4d6d,
-    emissive: 0xc9184a,
-    emissiveIntensity: 0.95,
+    color: 0xfbbf24,
+    emissive: 0xef4444,
+    emissiveIntensity: 1.4,
   });
 
-  // 1. Gnarled Root Base & Buttress Roots
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(1.55, 2.25, 1.1, 10), darkBarkMat);
-  base.position.y = 0.55;
+  // 1. Armored Titan Dais & Buttress Greave Pillars
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(1.65, 2.35, 1.15, 8), darkBarkMat);
+  base.position.y = 0.58;
   base.castShadow = true;
   root.add(base);
 
   for (let i = 0; i < 6; i++) {
     const ang = (i / 6) * Math.PI * 2;
-    const rootLeg = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.8, 7), barkMat);
-    rootLeg.position.set(Math.cos(ang) * 1.75, 0.5, Math.sin(ang) * 1.75);
-    rootLeg.rotation.z = -Math.cos(ang) * 0.55;
-    rootLeg.rotation.x = Math.sin(ang) * 0.55;
-    root.add(rootLeg);
+    const buttress = new THREE.Mesh(new THREE.BoxGeometry(0.48, 1.65, 0.68), barkMat);
+    buttress.position.set(Math.cos(ang) * 1.82, 0.65, Math.sin(ang) * 1.82);
+    buttress.rotation.y = -ang;
+    buttress.rotation.x = 0.32;
+    root.add(buttress);
   }
 
-  // 2. Sculpted Ent Torso
-  const bodyGeo = new THREE.CylinderGeometry(1.45, 1.55, 2.8, 12);
+  // 2. Sculpted Obsidian War-Cuirass Torso
+  const bodyGeo = new THREE.CylinderGeometry(1.58, 1.38, 2.85, 8);
   const body = new THREE.Mesh(bodyGeo, barkMat);
-  body.position.y = 2.1;
+  body.position.y = 2.15;
   body.castShadow = true;
   body.receiveShadow = true;
   root.add(body);
 
-  // 3. Carved Ancient Wooden Face & Glowing Eyes
-  const brow = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.34, 0.65), darkBarkMat);
-  brow.position.set(0, 2.95, 1.28);
-  root.add(brow);
+  // 3. Horned Sovereign War-Helm & Blazing Visor Eyes
+  const helmCrest = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.42, 0.85), mossShoulderMat);
+  helmCrest.position.set(0, 3.12, 1.18);
+  root.add(helmCrest);
 
-  const eyeGeo = new THREE.OctahedronGeometry(0.2, 0);
+  for (const side of [-1, 1]) {
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.15, 6), mossShoulderMat);
+    horn.position.set(side * 0.95, 3.55, 0.95);
+    horn.rotation.z = -side * 0.45;
+    horn.rotation.x = 0.35;
+    root.add(horn);
+  }
+
+  const eyeGeo = new THREE.BoxGeometry(0.38, 0.12, 0.14);
   const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-  leftEye.scale.set(1.3, 0.75, 0.6);
-  leftEye.position.set(-0.45, 2.72, 1.42);
+  leftEye.position.set(-0.46, 2.82, 1.46);
+  leftEye.rotation.z = -0.22;
   const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-  rightEye.scale.set(1.3, 0.75, 0.6);
-  rightEye.position.set(0.45, 2.72, 1.42);
+  rightEye.position.set(0.46, 2.82, 1.46);
+  rightEye.rotation.z = 0.22;
   root.add(leftEye, rightEye);
 
-  // Exposed Heart-Core inside Chest Hollow
-  const coreFrame = new THREE.Mesh(new THREE.TorusGeometry(0.82, 0.16, 8, 16), darkBarkMat);
-  coreFrame.position.set(0, 1.95, 1.32);
+  // Exposed Astral Singularity Reactor Core inside Chest
+  const coreFrame = new THREE.Mesh(new THREE.TorusGeometry(0.88, 0.16, 8, 16), mossShoulderMat);
+  coreFrame.position.set(0, 1.98, 1.34);
   root.add(coreFrame);
 
-  const coreGeo = new THREE.IcosahedronGeometry(0.72, 1);
+  const coreGeo = new THREE.OctahedronGeometry(0.76, 1);
   const core = new THREE.Mesh(coreGeo, coreMat);
-  core.position.set(0, 1.95, 1.25);
+  core.position.set(0, 1.98, 1.28);
   root.add(core);
 
-  // 4. Articulated Bramble Pauldron Arms + Thorny Claws
+  // 4. Articulated Colossal War-Gauntlet Arms + Plasma Claws
   const buildBossArm = (side: -1 | 1) => {
     const armGroup = new THREE.Group();
-    armGroup.position.set(side * 1.75, 2.85, 0.15);
+    armGroup.position.set(side * 1.88, 2.9, 0.15);
 
-    const pauldron = new THREE.Mesh(new THREE.DodecahedronGeometry(0.68, 0), mossShoulderMat);
+    const pauldron = new THREE.Mesh(new THREE.OctahedronGeometry(0.76, 0), mossShoulderMat);
+    pauldron.scale.set(1.2, 0.9, 1.1);
     pauldron.castShadow = true;
 
-    const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.44, 1.7, 8), barkMat);
-    forearm.position.set(side * 0.35, -0.95, 0.35);
+    const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.48, 1.8, 8), barkMat);
+    forearm.position.set(side * 0.38, -0.98, 0.38);
     forearm.rotation.z = side * 0.25;
-    forearm.rotation.x = -0.35;
+    forearm.rotation.x = -0.38;
     forearm.castShadow = true;
 
-    const claw1 = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.65, 6), darkBarkMat);
-    claw1.position.set(side * 0.45, -1.85, 0.75);
+    const claw1 = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.82, 5), coreMat);
+    claw1.position.set(side * 0.48, -1.92, 0.82);
     claw1.rotation.x = Math.PI * 0.75;
 
     armGroup.add(pauldron, forearm, claw1);
@@ -1501,51 +1665,52 @@ export function createBossModel(): {
   const rightArm = buildBossArm(1);
   root.add(leftArm, rightArm);
 
-  // 5. Antler Crown of Twisted Branches + Biome Blossom/Crystal Tips
+  // 5. Floating Dorsal Runic Monolith Crown (`branches`)
   const branches = new THREE.Group();
-  branches.position.set(0, 3.45, 0);
+  branches.position.set(0, 3.65, 0);
 
-  const branchGeo = new THREE.ConeGeometry(0.32, 2.4, 7);
-  branchGeo.translate(0, 1.2, 0);
-  const tipGeo = new THREE.OctahedronGeometry(0.28, 0);
+  const monolithGeo = new THREE.BoxGeometry(0.38, 2.2, 0.24);
+  monolithGeo.translate(0, 1.1, 0);
+  const tipGeo = new THREE.OctahedronGeometry(0.3, 0);
 
   for (let i = 0; i < 6; i++) {
     const ang = (i / 6) * Math.PI * 2;
-    const b = new THREE.Mesh(branchGeo, darkBarkMat);
-    b.position.set(Math.cos(ang) * 0.75, 0, Math.sin(ang) * 0.75);
-    b.rotation.z = -Math.cos(ang) * 0.48;
-    b.rotation.x = Math.sin(ang) * 0.48;
+    const b = new THREE.Mesh(monolithGeo, darkBarkMat);
+    b.position.set(Math.cos(ang) * 0.95, 0, Math.sin(ang) * 0.95);
+    b.rotation.y = -ang;
+    b.rotation.z = -Math.cos(ang) * 0.38;
+    b.rotation.x = Math.sin(ang) * 0.38;
     b.castShadow = true;
 
     const tip = new THREE.Mesh(tipGeo, crownGemMat);
-    tip.position.set(0, 2.2, 0);
+    tip.position.set(0, 2.35, 0);
     b.add(tip);
 
     branches.add(b);
   }
   root.add(branches);
 
-  // 6. Rotating Thorny Rune Shield Ring (Active while Shrines < 4)
-  const shieldGeo = new THREE.TorusGeometry(2.65, 0.12, 10, 32);
+  // 6. Rotating Hex-Runic Aegis Shield Ring
+  const shieldGeo = new THREE.TorusGeometry(2.75, 0.13, 8, 32);
   shieldGeo.rotateX(Math.PI / 2);
   const shieldMat = new THREE.MeshStandardMaterial({
-    color: 0x9d4edd,
-    emissive: 0x7b2cbf,
-    emissiveIntensity: 0.9,
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 1.1,
     transparent: true,
-    opacity: 0.75,
+    opacity: 0.78,
   });
   const shieldRing = new THREE.Mesh(shieldGeo, shieldMat);
-  shieldRing.position.y = 1.65;
+  shieldRing.position.y = 1.72;
   root.add(shieldRing);
 
-  const shadow = createContactShadow(2.85);
+  const shadow = createContactShadow(2.95);
   root.add(shadow);
 
   const applyBiomeTheme = (biome: StageBiomeTheme) => {
     barkMat.color.setHex(biome.bossBarkHex);
     mossShoulderMat.color.setHex(biome.bossCrownHex);
-    crownGemMat.color.setHex(biome.flowerPalette[0] ?? 0xffd166);
+    crownGemMat.color.setHex(biome.flowerPalette[0] ?? 0xfbbf24);
     crownGemMat.emissive.setHex(biome.bossCrownHex);
     coreMat.color.setHex(biome.bossCoreHex);
     coreMat.emissive.setHex(biome.bossCoreHex);
@@ -1565,7 +1730,7 @@ export function createBossModel(): {
 // ============================================================================
 
 /**
- * Stage 1 (Rescue & Escort): Adorable Lost Baby Sproutling + Destructible Thorny Bramble Cage
+ * Stage 1 (Rescue & Escort): Captured Astral Sentinel Spirit + Destructible Void Obelisk Prison
  */
 export function createLostSproutAndCageModel(): {
   sproutRoot: THREE.Group;
@@ -1573,114 +1738,88 @@ export function createLostSproutAndCageModel(): {
 } {
   const sproutRoot = new THREE.Group();
 
-  const bodyMat = new THREE.MeshStandardMaterial({
-    color: 0x80ed99,
-    roughness: 0.4,
-    metalness: 0.05,
+  const armorMat = new THREE.MeshStandardMaterial({
+    color: 0xe2e8f0,
+    roughness: 0.22,
+    metalness: 0.88,
   });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 14), bodyMat);
-  body.scale.set(1.05, 0.92, 1.05);
-  body.position.y = 0.42;
-  body.castShadow = true;
-  sproutRoot.add(body);
-
-  // Big glossy eyes + rosy cheeks
-  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x081c15, roughness: 0.15 });
-  const specMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  const cheekMat = new THREE.MeshStandardMaterial({
-    color: 0xff758f,
-    emissive: 0xff4d6d,
-    emissiveIntensity: 0.35,
-    roughness: 0.5,
+  const goldMat = new THREE.MeshStandardMaterial({
+    color: 0xfbbf24,
+    emissive: 0xd97706,
+    emissiveIntensity: 0.5,
+    roughness: 0.2,
+    metalness: 0.9,
   });
-  for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.065, 10, 8), eyeMat);
-    eye.position.set(side * 0.16, 0.48, 0.38);
-    const spec = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), specMat);
-    spec.position.set(side * 0.015, 0.02, 0.05);
-    eye.add(spec);
-    sproutRoot.add(eye);
-
-    const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), cheekMat);
-    cheek.scale.set(1.3, 0.7, 0.5);
-    cheek.position.set(side * 0.25, 0.4, 0.35);
-    sproutRoot.add(cheek);
-  }
-
-  // Twin glowing head-leaves + golden bud
-  const leafMat = new THREE.MeshStandardMaterial({
-    color: 0x38b000,
-    emissive: 0x2d6a4f,
-    emissiveIntensity: 0.25,
-    roughness: 0.35,
+  const visorMat = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 1.35,
   });
-  for (const side of [-1, 1]) {
-    const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.38, 8), leafMat);
-    leaf.position.set(side * 0.12, 0.88, 0);
-    leaf.rotation.z = -side * 0.55;
-    sproutRoot.add(leaf);
-  }
-  const bud = new THREE.Mesh(
-    new THREE.OctahedronGeometry(0.11, 0),
-    new THREE.MeshStandardMaterial({
-      color: 0xffd166,
-      emissive: 0xffbe0b,
-      emissiveIntensity: 0.9,
-      roughness: 0.2,
-    })
-  );
-  bud.position.y = 1.02;
-  sproutRoot.add(bud);
+
+  // Armored Sentinel Torso & Helm
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.26, 0.62, 8), armorMat);
+  torso.position.y = 0.42;
+  torso.castShadow = true;
+  sproutRoot.add(torso);
+
+  const helm = new THREE.Mesh(new THREE.OctahedronGeometry(0.3, 1), armorMat);
+  helm.position.y = 0.88;
+  sproutRoot.add(helm);
+
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.14), visorMat);
+  visor.position.set(0, 0.88, 0.24);
+  sproutRoot.add(visor);
+
+  const crest = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.38, 6), goldMat);
+  crest.position.set(0, 1.22, 0);
+  sproutRoot.add(crest);
 
   sproutRoot.add(createContactShadow(0.65));
 
-  // Destructible Thorny Bramble Cage
+  // Destructible Dark Void-Obelisk Prison Cage
   const cageRoot = new THREE.Group();
   const cageMat = new THREE.MeshStandardMaterial({
-    color: 0x3c096c,
-    emissive: 0x5a189a,
-    emissiveIntensity: 0.25,
-    roughness: 0.75,
-    metalness: 0.2,
+    color: 0x1e1b4b,
+    emissive: 0x4c1d95,
+    emissiveIntensity: 0.45,
+    roughness: 0.35,
+    metalness: 0.8,
   });
-  const baseRing = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.09, 8, 20), cageMat);
+  const baseRing = new THREE.Mesh(new THREE.TorusGeometry(0.86, 0.09, 8, 20), cageMat);
   baseRing.rotation.x = Math.PI / 2;
   baseRing.position.y = 0.08;
   cageRoot.add(baseRing);
 
-  const topRing = new THREE.Mesh(new THREE.TorusGeometry(0.68, 0.08, 8, 20), cageMat);
+  const topRing = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.08, 8, 20), cageMat);
   topRing.rotation.x = Math.PI / 2;
-  topRing.position.y = 1.35;
+  topRing.position.y = 1.38;
   cageRoot.add(topRing);
 
   for (let i = 0; i < 6; i++) {
     const ang = (i / 6) * Math.PI * 2;
-    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.075, 1.35, 7), cageMat);
-    bar.position.set(Math.cos(ang) * 0.76, 0.7, Math.sin(ang) * 0.76);
-    bar.rotation.z = Math.cos(ang) * 0.12;
-    bar.rotation.x = -Math.sin(ang) * 0.12;
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.11, 1.38, 0.11), cageMat);
+    bar.position.set(Math.cos(ang) * 0.78, 0.72, Math.sin(ang) * 0.78);
     bar.castShadow = true;
     cageRoot.add(bar);
   }
 
-  // Glowing lock crystal on top of the cage
   const lockGem = new THREE.Mesh(
-    new THREE.OctahedronGeometry(0.24, 0),
+    new THREE.OctahedronGeometry(0.26, 0),
     new THREE.MeshStandardMaterial({
-      color: 0xf72585,
-      emissive: 0xf72585,
-      emissiveIntensity: 1.1,
-      roughness: 0.2,
+      color: 0xf43f5e,
+      emissive: 0xe11d48,
+      emissiveIntensity: 1.3,
+      roughness: 0.15,
     })
   );
-  lockGem.position.y = 1.55;
+  lockGem.position.y = 1.6;
   cageRoot.add(lockGem);
 
   return { sproutRoot, cageRoot };
 }
 
 /**
- * Stage 2 (Sakura Harmonic Bells): Ancient Bell Tower + Crystal Light Bridge to Center
+ * Stage 2: Sovereign Resonance Bell + Astral Light Bridge to Center
  */
 export function createHarmonicBellAndBridgeModel(
   bellX: number,
@@ -1693,85 +1832,79 @@ export function createHarmonicBellAndBridgeModel(
 } {
   const root = new THREE.Group();
 
-  const woodMat = new THREE.MeshStandardMaterial({
-    color: 0xb5179e,
-    roughness: 0.55,
-    metalness: 0.1,
+  const stoneMat = new THREE.MeshStandardMaterial({
+    color: 0x1e293b,
+    roughness: 0.38,
+    metalness: 0.75,
   });
   const roofMat = new THREE.MeshStandardMaterial({
-    color: 0xff8fa3,
-    emissive: 0xff4d6d,
-    emissiveIntensity: 0.2,
-    roughness: 0.4,
+    color: 0xf59e0b,
+    emissive: 0xb45309,
+    emissiveIntensity: 0.35,
+    roughness: 0.25,
+    metalness: 0.85,
   });
 
-  // Two Torii pillars
   for (const side of [-1, 1]) {
-    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 2.9, 10), woodMat);
-    pillar.position.set(side * 0.95, 1.45, 0);
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 2.95, 8), stoneMat);
+    pillar.position.set(side * 0.98, 1.48, 0);
     pillar.castShadow = true;
     root.add(pillar);
   }
 
-  // Top crossbeams
-  const topBeam = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.24, 0.36), roofMat);
-  topBeam.position.y = 2.85;
+  const topBeam = new THREE.Mesh(new THREE.BoxGeometry(2.65, 0.26, 0.4), roofMat);
+  topBeam.position.y = 2.88;
   topBeam.castShadow = true;
   root.add(topBeam);
 
-  const lowerBeam = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.16, 0.26), woodMat);
-  lowerBeam.position.y = 2.4;
+  const lowerBeam = new THREE.Mesh(new THREE.BoxGeometry(2.25, 0.18, 0.28), stoneMat);
+  lowerBeam.position.y = 2.42;
   root.add(lowerBeam);
 
-  // Golden Hanging Bell
   const bellMat = new THREE.MeshStandardMaterial({
-    color: 0xffd166,
-    emissive: 0xf4a261,
-    emissiveIntensity: 0.35,
-    roughness: 0.22,
-    metalness: 0.85,
+    color: 0xfbbf24,
+    emissive: 0xd97706,
+    emissiveIntensity: 0.48,
+    roughness: 0.18,
+    metalness: 0.92,
   });
-  const bellMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.52, 0.95, 16), bellMat);
-  bellMesh.position.y = 1.75;
+  const bellMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.54, 0.98, 16), bellMat);
+  bellMesh.position.y = 1.76;
   bellMesh.castShadow = true;
   root.add(bellMesh);
 
-  // Halo ring around base
   const haloMat = new THREE.MeshStandardMaterial({
-    color: 0xff8fa3,
-    emissive: 0xff4d6d,
-    emissiveIntensity: 0.6,
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 0.85,
     transparent: true,
-    opacity: 0.7,
+    opacity: 0.75,
   });
-  const haloRing = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.08, 8, 28), haloMat);
+  const haloRing = new THREE.Mesh(new THREE.TorusGeometry(1.42, 0.08, 8, 28), haloMat);
   haloRing.rotation.x = Math.PI / 2;
   haloRing.position.y = 0.1;
   root.add(haloRing);
 
-  // Crystal Light Bridge connecting (bellX, bellZ) toward (0, 0)
   const dist = Math.hypot(bellX, bellZ);
   const bridgeLen = Math.max(4, dist - 3.5);
-  const bridgeGeo = new THREE.BoxGeometry(1.15, 0.12, bridgeLen);
+  const bridgeGeo = new THREE.BoxGeometry(1.18, 0.12, bridgeLen);
   const bridgeMat = new THREE.MeshStandardMaterial({
-    color: 0xffcad4,
-    emissive: 0xff4d6d,
-    emissiveIntensity: 0.15,
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 0.35,
     transparent: true,
-    opacity: 0.25,
-    roughness: 0.2,
+    opacity: 0.32,
+    roughness: 0.15,
   });
   const bridgeMesh = new THREE.Mesh(bridgeGeo, bridgeMat);
-  const midX = bellX * 0.5;
-  const midZ = bellZ * 0.5;
-  bridgeMesh.position.set(midX, 0.18, midZ);
+  bridgeMesh.position.set(bellX * 0.5, 0.18, bellZ * 0.5);
   bridgeMesh.rotation.y = Math.atan2(bellX, bellZ);
 
   return { root, bellMesh, haloRing, bridgeMesh };
 }
 
 /**
- * Stage 2 Centerpiece: Grand Sakura Bell Pavilion at (0, 0)
+ * Stage 2 Centerpiece: Grand Sovereign Sanctum Pavilion at (0, 0)
  */
 export function createSakuraPavilionCenterpiece(): {
   root: THREE.Group;
@@ -1780,53 +1913,58 @@ export function createSakuraPavilionCenterpiece(): {
   const root = new THREE.Group();
 
   const baseMat = new THREE.MeshStandardMaterial({
-    color: 0xfde2e4,
-    roughness: 0.45,
-    metalness: 0.1,
+    color: 0x1e293b,
+    roughness: 0.38,
+    metalness: 0.75,
   });
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.6, 0.45, 24), baseMat);
-  base.position.y = 0.22;
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.6, 0.48, 16), baseMat);
+  base.position.y = 0.24;
   base.receiveShadow = true;
   root.add(base);
 
   const roofMat = new THREE.MeshStandardMaterial({
-    color: 0xff758f,
-    emissive: 0xff4d6d,
-    emissiveIntensity: 0.28,
-    roughness: 0.35,
+    color: 0xf59e0b,
+    emissive: 0xb45309,
+    emissiveIntensity: 0.32,
+    roughness: 0.24,
+    metalness: 0.85,
   });
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(3.4, 1.6, 8), roofMat);
-  roof.position.y = 3.6;
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(3.45, 1.65, 8), roofMat);
+  roof.position.y = 3.65;
   roof.castShadow = true;
   root.add(roof);
 
-  const pillarMat = new THREE.MeshStandardMaterial({ color: 0x6d597a, roughness: 0.5 });
+  const pillarMat = new THREE.MeshStandardMaterial({
+    color: 0x0f172a,
+    roughness: 0.35,
+    metalness: 0.8,
+  });
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2;
-    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 2.8, 10), pillarMat);
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 2.85, 8), pillarMat);
     p.position.set(Math.cos(a) * 2.4, 1.6, Math.sin(a) * 2.4);
     p.castShadow = true;
     root.add(p);
   }
 
   const crystalCore = new THREE.Mesh(
-    new THREE.OctahedronGeometry(0.75, 1),
+    new THREE.OctahedronGeometry(0.78, 1),
     new THREE.MeshStandardMaterial({
-      color: 0xffd166,
-      emissive: 0xff4d6d,
-      emissiveIntensity: 1.1,
-      roughness: 0.15,
-      metalness: 0.4,
+      color: 0x38bdf8,
+      emissive: 0x0284c7,
+      emissiveIntensity: 1.25,
+      roughness: 0.12,
+      metalness: 0.5,
     })
   );
-  crystalCore.position.y = 1.65;
+  crystalCore.position.y = 1.68;
   root.add(crystalCore);
 
   return { root, crystalCore };
 }
 
 /**
- * Stage 3 Centerpiece: Colossal Ancient Amber Heart-Tree at (0, 0) + Golden Pulse Totems
+ * Stage 3 Centerpiece: Colossal World-Tree Conduit at (0, 0) + Golden Aegis Totems
  */
 export function createHeartTreeCenterpiece(): {
   root: THREE.Group;
@@ -1836,31 +1974,30 @@ export function createHeartTreeCenterpiece(): {
   const root = new THREE.Group();
 
   const trunkMat = new THREE.MeshStandardMaterial({
-    color: 0x582f0e,
-    roughness: 0.8,
+    color: 0x1e293b,
+    roughness: 0.45,
+    metalness: 0.72,
   });
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.85, 3.8, 12), trunkMat);
-  trunk.position.y = 1.9;
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.9, 3.85, 10), trunkMat);
+  trunk.position.y = 1.92;
   trunk.castShadow = true;
   trunk.receiveShadow = true;
   root.add(trunk);
 
-  // Glowing Heart Core embedded in the trunk
   const heartCore = new THREE.Mesh(
-    new THREE.OctahedronGeometry(0.85, 1),
+    new THREE.OctahedronGeometry(0.88, 1),
     new THREE.MeshStandardMaterial({
-      color: 0xffbe0b,
-      emissive: 0xf77f00,
-      emissiveIntensity: 1.25,
-      roughness: 0.2,
+      color: 0xfbbf24,
+      emissive: 0xea580c,
+      emissiveIntensity: 1.35,
+      roughness: 0.15,
     })
   );
-  heartCore.position.set(0, 1.7, 0);
+  heartCore.position.set(0, 1.75, 0);
   root.add(heartCore);
 
-  // Golden-Amber Autumn Canopy domes
   const canopyGroup = new THREE.Group();
-  const leafColors = [0xe76f51, 0xf4a261, 0xff9f1c, 0xe9c46a];
+  const leafColors = [0xd97706, 0xf59e0b, 0x0284c7, 0xfbbf24];
   const offsets = [
     [0, 4.4, 0, 2.4],
     [-1.4, 3.7, 0.9, 1.6],
@@ -1871,13 +2008,14 @@ export function createHeartTreeCenterpiece(): {
   offsets.forEach(([ox, oy, oz, rad], idx) => {
     const mat = new THREE.MeshStandardMaterial({
       color: leafColors[idx % leafColors.length],
-      emissive: 0xbc6c25,
-      emissiveIntensity: 0.22,
-      roughness: 0.55,
+      emissive: leafColors[idx % leafColors.length],
+      emissiveIntensity: 0.28,
+      roughness: 0.35,
+      metalness: 0.45,
     });
-    const dome = new THREE.Mesh(new THREE.DodecahedronGeometry(rad, 1), mat);
+    const dome = new THREE.Mesh(new THREE.OctahedronGeometry(rad, 1), mat);
     dome.position.set(ox, oy, oz);
-    dome.scale.y = 0.78;
+    dome.scale.y = 0.72;
     dome.castShadow = true;
     canopyGroup.add(dome);
   });
@@ -1894,33 +2032,33 @@ export function createDefenseTotemModel(): {
   const root = new THREE.Group();
 
   const base = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.45, 0.62, 1.35, 10),
-    new THREE.MeshStandardMaterial({ color: 0x7f4f24, roughness: 0.7 })
+    new THREE.CylinderGeometry(0.45, 0.64, 1.38, 8),
+    new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.38, metalness: 0.78 })
   );
-  base.position.y = 0.68;
+  base.position.y = 0.69;
   base.castShadow = true;
   root.add(base);
 
   const orb = new THREE.Mesh(
-    new THREE.OctahedronGeometry(0.38, 0),
+    new THREE.OctahedronGeometry(0.4, 0),
     new THREE.MeshStandardMaterial({
-      color: 0xffd166,
-      emissive: 0xff9f1c,
-      emissiveIntensity: 1.1,
-      roughness: 0.2,
+      color: 0xfbbf24,
+      emissive: 0xd97706,
+      emissiveIntensity: 1.25,
+      roughness: 0.15,
     })
   );
-  orb.position.y = 1.7;
+  orb.position.y = 1.72;
   root.add(orb);
 
   const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(1.1, 0.06, 8, 24),
+    new THREE.TorusGeometry(1.12, 0.06, 8, 24),
     new THREE.MeshStandardMaterial({
-      color: 0xffbe0b,
-      emissive: 0xf77f00,
-      emissiveIntensity: 0.8,
+      color: 0x38bdf8,
+      emissive: 0x0284c7,
+      emissiveIntensity: 0.9,
       transparent: true,
-      opacity: 0.75,
+      opacity: 0.78,
     })
   );
   ring.rotation.x = Math.PI / 2;
@@ -1942,36 +2080,36 @@ export function createAuroraSpireCenterpiece(): {
 
   const pedestal = new THREE.Mesh(
     new THREE.CylinderGeometry(2.2, 2.7, 0.5, 16),
-    new THREE.MeshStandardMaterial({ color: 0x1d3557, roughness: 0.4, metalness: 0.3 })
+    new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.35, metalness: 0.78 })
   );
   pedestal.position.y = 0.25;
   root.add(pedestal);
 
   const spireMesh = new THREE.Mesh(
-    new THREE.OctahedronGeometry(1.35, 0),
+    new THREE.OctahedronGeometry(1.38, 0),
     new THREE.MeshStandardMaterial({
-      color: 0x80ffdb,
-      emissive: 0x00b4d8,
-      emissiveIntensity: 1.1,
-      roughness: 0.15,
-      metalness: 0.5,
+      color: 0x38bdf8,
+      emissive: 0x0284c7,
+      emissiveIntensity: 1.2,
+      roughness: 0.12,
+      metalness: 0.6,
     })
   );
-  spireMesh.scale.set(0.85, 2.1, 0.85);
-  spireMesh.position.y = 2.4;
+  spireMesh.scale.set(0.85, 2.15, 0.85);
+  spireMesh.position.y = 2.45;
   spireMesh.castShadow = true;
   root.add(spireMesh);
 
   const haloMesh = new THREE.Mesh(
-    new THREE.TorusGeometry(2.1, 0.09, 10, 32),
+    new THREE.TorusGeometry(2.12, 0.09, 10, 32),
     new THREE.MeshStandardMaterial({
-      color: 0xe0aaff,
-      emissive: 0x72efdd,
-      emissiveIntensity: 0.9,
+      color: 0xfbbf24,
+      emissive: 0xd97706,
+      emissiveIntensity: 0.95,
     })
   );
   haloMesh.rotation.x = Math.PI / 2;
-  haloMesh.position.y = 1.8;
+  haloMesh.position.y = 1.82;
   root.add(haloMesh);
 
   return { root, spireMesh, haloMesh };
@@ -1986,27 +2124,27 @@ export function createStarlightMeteorModel(): {
   const root = new THREE.Group();
 
   const core = new THREE.Mesh(
-    new THREE.OctahedronGeometry(0.52, 0),
+    new THREE.OctahedronGeometry(0.54, 0),
     new THREE.MeshStandardMaterial({
-      color: 0xffe66d,
-      emissive: 0x00f5d4,
-      emissiveIntensity: 1.35,
-      roughness: 0.15,
-      metalness: 0.3,
+      color: 0xfbbf24,
+      emissive: 0x38bdf8,
+      emissiveIntensity: 1.4,
+      roughness: 0.12,
+      metalness: 0.45,
     })
   );
-  core.position.y = 0.75;
+  core.position.y = 0.76;
   core.castShadow = true;
   root.add(core);
 
   const timerRing = new THREE.Mesh(
-    new THREE.TorusGeometry(1.15, 0.07, 8, 28),
+    new THREE.TorusGeometry(1.16, 0.07, 8, 28),
     new THREE.MeshStandardMaterial({
-      color: 0x80ffdb,
-      emissive: 0x48cae4,
-      emissiveIntensity: 0.9,
+      color: 0x38bdf8,
+      emissive: 0x0284c7,
+      emissiveIntensity: 0.95,
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.85,
     })
   );
   timerRing.rotation.x = Math.PI / 2;
@@ -2014,11 +2152,11 @@ export function createStarlightMeteorModel(): {
   root.add(timerRing);
 
   const beam = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.15, 0.45, 6.5, 10, 1, true),
+    new THREE.CylinderGeometry(0.16, 0.46, 6.5, 10, 1, true),
     new THREE.MeshBasicMaterial({
-      color: 0x80ffdb,
+      color: 0x38bdf8,
       transparent: true,
-      opacity: 0.22,
+      opacity: 0.26,
       side: THREE.DoubleSide,
       depthWrite: false,
     })
@@ -2030,24 +2168,24 @@ export function createStarlightMeteorModel(): {
 }
 
 /**
- * Shared Wind-Stream / Aurora Speed Boost Pad
+ * Shared Astral Ley-Gate Speed Boost Pad
  */
 export function createBoostPadModel(isAurora: boolean): {
   root: THREE.Group;
   ring: THREE.Mesh;
 } {
   const root = new THREE.Group();
-  const primaryHex = isAurora ? 0x80ffdb : 0xff8fa3;
-  const emissiveHex = isAurora ? 0x00b4d8 : 0xff4d6d;
+  const primaryHex = isAurora ? 0x38bdf8 : 0xfbbf24;
+  const emissiveHex = isAurora ? 0x0284c7 : 0xd97706;
 
   const ring = new THREE.Mesh(
     new THREE.TorusGeometry(1.45, 0.1, 8, 24),
     new THREE.MeshStandardMaterial({
       color: primaryHex,
       emissive: emissiveHex,
-      emissiveIntensity: 1.0,
+      emissiveIntensity: 1.1,
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.88,
     })
   );
   ring.rotation.x = Math.PI / 2;
@@ -2059,7 +2197,7 @@ export function createBoostPadModel(isAurora: boolean): {
     new THREE.MeshBasicMaterial({
       color: primaryHex,
       transparent: true,
-      opacity: 0.28,
+      opacity: 0.3,
       side: THREE.DoubleSide,
     })
   );
@@ -2071,8 +2209,7 @@ export function createBoostPadModel(isAurora: boolean): {
 }
 
 /**
- * Procedural Mid-Field 3D Obstacle Models (Moss Boulder, Hollow Log, Crystal Spire, Ruin Pillar)
- * that shift positions and biome colors every chapter.
+ * Procedural Mid-Field 3D Obstacle & Runic Trap Models
  */
 export function createStageObstacleModel(
   obstacle: StageObstacle,
@@ -2084,65 +2221,70 @@ export function createStageObstacleModel(
   if (obstacle.type === 'moss_boulder') {
     const rockMat = new THREE.MeshStandardMaterial({
       color: biome.cliffHex,
-      roughness: 0.84,
-      metalness: 0.05,
+      roughness: 0.55,
+      metalness: 0.45,
     });
-    const mossMat = new THREE.MeshStandardMaterial({
+    const runeCapMat = new THREE.MeshStandardMaterial({
       color: biome.canopyPrimaryHex,
-      roughness: 0.65,
+      emissive: biome.canopySecondaryHex,
+      emissiveIntensity: 0.25,
+      roughness: 0.4,
     });
     const mainRock = new THREE.Mesh(new THREE.DodecahedronGeometry(1.15, 1), rockMat);
-    mainRock.scale.set(1.15, 0.85, 1.0);
+    mainRock.scale.set(1.15, 0.88, 1.0);
     mainRock.position.y = 0.72;
     mainRock.castShadow = true;
     mainRock.receiveShadow = true;
     root.add(mainRock);
 
-    const mossCap = new THREE.Mesh(
-      new THREE.SphereGeometry(0.95, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.45),
-      mossMat
-    );
-    mossCap.position.y = 0.85;
-    root.add(mossCap);
+    const runeCrystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.55, 0), runeCapMat);
+    runeCrystal.scale.set(0.8, 1.6, 0.8);
+    runeCrystal.position.y = 1.25;
+    root.add(runeCrystal);
   } else if (obstacle.type === 'hollow_log') {
-    const barkMat = new THREE.MeshStandardMaterial({
-      color: biome.trunkHex,
-      roughness: 0.88,
+    const stoneMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b,
+      roughness: 0.45,
+      metalness: 0.7,
     });
-    const mossMat = new THREE.MeshStandardMaterial({
-      color: biome.mossHex,
-      roughness: 0.68,
+    const goldMat = new THREE.MeshStandardMaterial({
+      color: 0xf59e0b,
+      emissive: 0xb45309,
+      emissiveIntensity: 0.4,
+      roughness: 0.25,
+      metalness: 0.85,
     });
-    const logMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.64, 2.6, 12), barkMat);
-    logMesh.rotation.z = Math.PI / 2;
-    logMesh.position.y = 0.56;
-    logMesh.castShadow = true;
-    logMesh.receiveShadow = true;
-    root.add(logMesh);
+    const fallenMonolith = new THREE.Mesh(new THREE.CylinderGeometry(0.56, 0.62, 2.6, 8), stoneMat);
+    fallenMonolith.rotation.z = Math.PI / 2;
+    fallenMonolith.position.y = 0.56;
+    fallenMonolith.castShadow = true;
+    fallenMonolith.receiveShadow = true;
+    root.add(fallenMonolith);
 
-    const mossStrip = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.18, 0.65), mossMat);
-    mossStrip.position.y = 1.08;
-    root.add(mossStrip);
+    const runeBand = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.18, 0.68), goldMat);
+    runeBand.position.y = 1.06;
+    root.add(runeBand);
   } else if (obstacle.type === 'crystal_spire') {
-    const crysHex = biome.crystalPalette[0] ?? 0x48cae4;
+    const crysHex = biome.crystalPalette[0] ?? 0x38bdf8;
     const crysMat = new THREE.MeshStandardMaterial({
       color: crysHex,
       emissive: crysHex,
-      emissiveIntensity: 0.55,
-      roughness: 0.18,
-      metalness: 0.3,
+      emissiveIntensity: 0.85,
+      roughness: 0.14,
+      metalness: 0.45,
     });
     const baseMat = new THREE.MeshStandardMaterial({
-      color: biome.cliffHex,
-      roughness: 0.8,
+      color: 0x0f172a,
+      roughness: 0.45,
+      metalness: 0.7,
     });
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 1.05, 0.35, 8), baseMat);
     base.position.y = 0.18;
     root.add(base);
 
     const mainSpire = new THREE.Mesh(new THREE.OctahedronGeometry(0.68, 0), crysMat);
-    mainSpire.scale.set(0.8, 2.2, 0.8);
-    mainSpire.position.y = 1.35;
+    mainSpire.scale.set(0.8, 2.25, 0.8);
+    mainSpire.position.y = 1.38;
     mainSpire.castShadow = true;
     root.add(mainSpire);
 
@@ -2151,30 +2293,75 @@ export function createStageObstacleModel(
     sideSpire.position.set(0.48, 0.85, 0.25);
     sideSpire.rotation.z = -0.32;
     root.add(sideSpire);
+
+    const hazardRing = new THREE.Mesh(
+      new THREE.RingGeometry(1.25, 1.52, 24),
+      new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.42,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      })
+    );
+    hazardRing.rotation.x = -Math.PI / 2;
+    hazardRing.position.y = 0.06;
+    root.add(hazardRing);
+    root.userData.hazardRing = hazardRing;
+    root.userData.hazardRadius = 2.15;
   } else {
-    // ruin_pillar
+    // ruin_pillar -> Runic Blade-Spinner Trap Obelisk
     const stoneMat = new THREE.MeshStandardMaterial({
-      color: 0xadb5bd,
-      roughness: 0.76,
-      metalness: 0.08,
+      color: 0x1e293b,
+      roughness: 0.38,
+      metalness: 0.78,
     });
     const runeMat = new THREE.MeshStandardMaterial({
-      color: biome.fireflyPrimaryHex,
-      emissive: biome.fireflyPrimaryHex,
-      emissiveIntensity: 0.8,
+      color: 0xf59e0b,
+      emissive: 0xd97706,
+      emissiveIntensity: 0.95,
+      roughness: 0.18,
+      metalness: 0.88,
     });
     const plinth = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.36, 1.4), stoneMat);
     plinth.position.y = 0.18;
     root.add(plinth);
 
-    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.54, 2.1, 8), stoneMat);
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.52, 2.15, 8), stoneMat);
     col.position.y = 1.25;
     col.castShadow = true;
     root.add(col);
 
-    const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.28, 0), runeMat);
-    orb.position.y = 2.55;
+    const spinnerGroup = new THREE.Group();
+    spinnerGroup.position.y = 0.85;
+    const bladeGeo = new THREE.BoxGeometry(2.45, 0.06, 0.24);
+    const b1 = new THREE.Mesh(bladeGeo, runeMat);
+    const b2 = new THREE.Mesh(bladeGeo, runeMat);
+    b2.rotation.y = Math.PI / 2;
+    spinnerGroup.add(b1, b2);
+    root.add(spinnerGroup);
+    root.userData.spinnerGroup = spinnerGroup;
+    root.userData.bladeRing = spinnerGroup;
+
+    const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.3, 0), runeMat);
+    orb.position.y = 2.58;
     root.add(orb);
+
+    const hazardRing = new THREE.Mesh(
+      new THREE.RingGeometry(1.28, 1.54, 24),
+      new THREE.MeshBasicMaterial({
+        color: 0xef4444,
+        transparent: true,
+        opacity: 0.45,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      })
+    );
+    hazardRing.rotation.x = -Math.PI / 2;
+    hazardRing.position.y = 0.06;
+    root.add(hazardRing);
+    root.userData.hazardRing = hazardRing;
+    root.userData.hazardRadius = 2.25;
   }
 
   const shadow = createContactShadow(obstacle.radius);
@@ -2186,9 +2373,9 @@ export function createStageObstacleModel(
 }
 
 /**
- * Non-Combative 'Sprout-Buddy' Pet Companion 3D Rig & Target Highlighter Beacon.
- * Follows Pip around the procedural map, fluttering its translucent leaf wings
- * and projecting a glowing beacon ring & light column onto nearby Sun-Seeds or Shrine components.
+ * Orin, the Celestial Astrolabe Sentinel (Replaces Sprout-Buddy).
+ * Sleek arcane-mechanical companion construct with counter-rotating brass gimbal rings,
+ * glowing sapphire sensor eye, and crystalline wing-vanes that lock onto nearby Shards & Relics.
  */
 export interface SproutBuddyRig {
   root: THREE.Group;
@@ -2207,122 +2394,94 @@ export interface SproutBuddyRig {
 export function createSproutBuddyModel(): SproutBuddyRig {
   const root = new THREE.Group();
   const bodyGroup = new THREE.Group();
-  bodyGroup.position.y = 1.25;
+  bodyGroup.position.y = 1.28;
   root.add(bodyGroup);
 
-  const skinMat = new THREE.MeshStandardMaterial({
-    color: 0xb7e4c7,
-    emissive: 0x52b788,
-    emissiveIntensity: 0.22,
-    roughness: 0.35,
-    metalness: 0.08,
+  const obsidianHullMat = new THREE.MeshStandardMaterial({
+    color: 0x1e293b,
+    roughness: 0.25,
+    metalness: 0.88,
   });
-
-  const cheekMat = new THREE.MeshBasicMaterial({
-    color: 0xff8fa3,
-  });
-
-  const eyeMat = new THREE.MeshBasicMaterial({
-    color: 0x1b4332,
-  });
-
-  const catchlightMat = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-  });
-
-  const leafMat = new THREE.MeshStandardMaterial({
-    color: 0x40916c,
-    roughness: 0.42,
-    side: THREE.DoubleSide,
-  });
-
-  const wingMat = new THREE.MeshStandardMaterial({
-    color: 0x95d5b2,
-    emissive: 0x74c69d,
+  const goldBrassMat = new THREE.MeshStandardMaterial({
+    color: 0xfbbf24,
+    emissive: 0xd97706,
     emissiveIntensity: 0.45,
+    roughness: 0.18,
+    metalness: 0.92,
+  });
+  const eyeCoreMat = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 1.4,
+    roughness: 0.1,
+  });
+  const wingVaneMat = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 0.75,
     transparent: true,
-    opacity: 0.78,
+    opacity: 0.85,
     side: THREE.DoubleSide,
   });
-
   const antennaMat = new THREE.MeshStandardMaterial({
-    color: 0xffd166,
-    emissive: 0xffaa00,
-    emissiveIntensity: 1.15,
-    roughness: 0.15,
+    color: 0xfbbf24,
+    emissive: 0xf59e0b,
+    emissiveIntensity: 1.25,
+    roughness: 0.12,
   });
 
-  // Plump Dewdrop Body
-  const bodyGeo = new THREE.SphereGeometry(0.26, 18, 16);
-  bodyGeo.scale(1.05, 0.95, 1.0);
-  const bodyMesh = new THREE.Mesh(bodyGeo, skinMat);
+  // Faceted Astrolabe Sentinel Core Sphere
+  const bodyGeo = new THREE.OctahedronGeometry(0.24, 1);
+  const bodyMesh = new THREE.Mesh(bodyGeo, obsidianHullMat);
   bodyMesh.castShadow = true;
   bodyGroup.add(bodyMesh);
 
-  // Expressive Eyes & Catchlights
-  const eyeGeo = new THREE.SphereGeometry(0.042, 10, 10);
-  const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-  leftEye.position.set(-0.09, 0.04, 0.23);
-  const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-  rightEye.position.set(0.09, 0.04, 0.23);
+  // Brass Equatorial Gimbal Band + Glowing Sapphire Sensor Eye
+  const gimbalBand = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.028, 8, 20), goldBrassMat);
+  gimbalBand.rotation.x = Math.PI / 2;
+  bodyGroup.add(gimbalBand);
 
-  const specGeo = new THREE.SphereGeometry(0.016, 8, 8);
-  const leftSpec = new THREE.Mesh(specGeo, catchlightMat);
-  leftSpec.position.set(-0.078, 0.055, 0.265);
-  const rightSpec = new THREE.Mesh(specGeo, catchlightMat);
-  rightSpec.position.set(0.102, 0.055, 0.265);
+  const eyeLens = new THREE.Mesh(new THREE.OctahedronGeometry(0.095, 1), eyeCoreMat);
+  eyeLens.position.set(0, 0.02, 0.22);
+  const eyeBezel = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.018, 8, 16), goldBrassMat);
+  eyeBezel.position.set(0, 0.02, 0.21);
+  bodyGroup.add(eyeLens, eyeBezel);
 
-  // Rosy Cheeks
-  const cheekGeo = new THREE.SphereGeometry(0.038, 8, 8);
-  cheekGeo.scale(1.2, 0.65, 0.5);
-  const leftCheek = new THREE.Mesh(cheekGeo, cheekMat);
-  leftCheek.position.set(-0.15, -0.02, 0.21);
-  const rightCheek = new THREE.Mesh(cheekGeo, cheekMat);
-  rightCheek.position.set(0.15, -0.02, 0.21);
+  // Top Celestial Crest + Sensor Prism (`antennaOrb`)
+  const crestFin = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.22, 4), goldBrassMat);
+  crestFin.position.set(0, 0.28, 0);
+  bodyGroup.add(crestFin);
 
-  bodyGroup.add(leftEye, rightEye, leftSpec, rightSpec, leftCheek, rightCheek);
-
-  // Head Sprout Stem + Glowing Sensor Antenna Orb
-  const stemMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.028, 0.22, 8), leafMat);
-  stemMesh.position.set(0, 0.3, 0);
-  bodyGroup.add(stemMesh);
-
-  const leafGeo = new THREE.SphereGeometry(0.11, 10, 8);
-  leafGeo.scale(1.3, 0.22, 0.55);
-  const topLeafL = new THREE.Mesh(leafGeo, leafMat);
-  topLeafL.position.set(-0.1, 0.34, 0);
-  topLeafL.rotation.z = 0.35;
-  const topLeafR = new THREE.Mesh(leafGeo, leafMat);
-  topLeafR.position.set(0.1, 0.34, 0);
-  topLeafR.rotation.z = -0.35;
-  bodyGroup.add(topLeafL, topLeafR);
-
-  const antennaOrb = new THREE.Mesh(new THREE.OctahedronGeometry(0.085, 1), antennaMat);
-  antennaOrb.position.set(0, 0.45, 0);
+  const antennaOrb = new THREE.Mesh(new THREE.OctahedronGeometry(0.085, 0), antennaMat);
+  antennaOrb.position.set(0, 0.44, 0);
   bodyGroup.add(antennaOrb);
 
-  // Fluttering Translucent Fairy-Leaf Wings
-  const wingGeo = new THREE.SphereGeometry(0.19, 12, 10);
-  wingGeo.scale(1.4, 0.65, 0.14);
-  wingGeo.translate(0.18, 0, 0);
+  // Articulated Crystalline Wing-Vanes (`leftWing`, `rightWing`)
+  const vaneShape = new THREE.Shape();
+  vaneShape.moveTo(0, 0);
+  vaneShape.lineTo(0.38, 0.16);
+  vaneShape.lineTo(0.46, -0.04);
+  vaneShape.lineTo(0.14, -0.14);
+  vaneShape.closePath();
+  const wingGeo = new THREE.ShapeGeometry(vaneShape);
 
-  const leftWing = new THREE.Mesh(wingGeo, wingMat);
-  leftWing.position.set(-0.14, 0.08, -0.14);
+  const leftWing = new THREE.Mesh(wingGeo, wingVaneMat);
+  leftWing.position.set(-0.16, 0.06, -0.12);
   leftWing.rotation.y = Math.PI - 0.35;
   bodyGroup.add(leftWing);
 
-  const rightWing = new THREE.Mesh(wingGeo, wingMat);
-  rightWing.position.set(0.14, 0.08, -0.14);
+  const rightWing = new THREE.Mesh(wingGeo, wingVaneMat);
+  rightWing.position.set(0.16, 0.06, -0.12);
   rightWing.rotation.y = 0.35;
   bodyGroup.add(rightWing);
 
-  // Orbiting Starlight Halo Ring around Sprout-Buddy
+  // Outer Orbiting Astrolabe Ring (`orbitRing`)
   const orbitRing = new THREE.Mesh(
-    new THREE.TorusGeometry(0.38, 0.016, 8, 24),
+    new THREE.TorusGeometry(0.39, 0.018, 8, 24),
     new THREE.MeshBasicMaterial({
-      color: 0xffd166,
+      color: 0xfbbf24,
       transparent: true,
-      opacity: 0.72,
+      opacity: 0.8,
     })
   );
   orbitRing.rotation.x = Math.PI / 2.3;
@@ -2331,28 +2490,28 @@ export function createSproutBuddyModel(): SproutBuddyRig {
   const shadow = createContactShadow(0.36);
   root.add(shadow);
 
-  // 3D Target Highlight Beacon (Placed at the detected Sun-Seed or Shrine component)
+  // 3D Target Highlight Beacon
   const highlightGroup = new THREE.Group();
   highlightGroup.visible = false;
 
   const beaconMat = new THREE.MeshBasicMaterial({
-    color: 0xffd166,
+    color: 0xfbbf24,
     transparent: true,
-    opacity: 0.85,
+    opacity: 0.88,
     side: THREE.DoubleSide,
   });
 
   const beaconInnerMat = new THREE.MeshBasicMaterial({
-    color: 0x06d6a0,
+    color: 0x38bdf8,
     transparent: true,
-    opacity: 0.65,
+    opacity: 0.72,
     side: THREE.DoubleSide,
   });
 
   const beaconBeamMat = new THREE.MeshBasicMaterial({
-    color: 0xffd166,
+    color: 0xfbbf24,
     transparent: true,
-    opacity: 0.22,
+    opacity: 0.24,
     side: THREE.DoubleSide,
     depthWrite: false,
   });
@@ -2396,5 +2555,3 @@ export function createSproutBuddyModel(): SproutBuddyRig {
     setHighlightColor,
   };
 }
-
-
