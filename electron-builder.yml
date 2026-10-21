@@ -1,0 +1,46 @@
+appId: com.hyn198911.sproutling3d
+productName: Sproutling Grove Guardian 3D
+electronVersion: 33.2.0
+directories:
+  output: release-desktop
+files:
+  - dist/**/*
+  - electron-main.cjs
+  - package.json
+extraMetadata:
+  main: electron-main.cjs
+npmRebuild: false
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+    - target: zip
+      arch:
+        - x64
+  artifactName: Sproutling-Grove-Guardian-3D-${version}-Win-${arch}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: Sproutling-Grove-Guardian-3D-${version}-Win-Setup-${arch}.${ext}
+portable:
+  artifactName: Sproutling-Grove-Guardian-3D-${version}-Win-Portable-${arch}.${ext}
+linux:
+  target:
+    - AppImage
+    - deb
+    - tar.gz
+  category: Game
+  synopsis: Sproutling Grove Guardian 3D Action Adventure
+  maintainer: Sproutling Studio <hyn198911@gmail.com>
+  artifactName: Sproutling-Grove-Guardian-3D-${version}-Linux-${arch}.${ext}
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.action-games
+  identity: null
+  artifactName: Sproutling-Grove-Guardian-3D-${version}-macOS-${arch}.${ext}

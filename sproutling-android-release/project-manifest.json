@@ -1,0 +1,25 @@
+{
+  "project": "Sproutling: Grove Guardian 3D",
+  "packageId": "com.hyn198911.sproutling3d",
+  "subfolder": "sproutling-android-release",
+  "version": "v1.7.1",
+  "platforms": [
+    "windows-exe-nsis-installer",
+    "windows-exe-portable",
+    "android-apk-aab",
+    "linux-appimage-deb-targz",
+    "macos-dmg-zip",
+    "web-pwa-offline-zip",
+    "source-project-zip"
+  ],
+  "features": [
+    "elemental-parry-infusion",
+    "3d-spatial-elemental-audio",
+    "max-boosted-3d-graphics-all-modes",
+    "5-stage-multipart-centerpieces",
+    "sprout-buddy-companion",
+    "biome-ambient-bgm"
+  ],
+  "updatedAt": "2026-10-21T21:56:34.562Z",
+  "publisherAccount": "hyn198911@gmail.com"
+}

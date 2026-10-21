@@ -1,0 +1,194 @@
+name: Build Multi-Platform Releases (Windows EXE, Android APK/AAB, Linux, macOS, Web PWA)
+
+on:
+  push:
+    branches: [main, master]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # 1. Build WebGL, Offline PWA Bundle (.zip) & Full Source Archive (.zip)
+  build-web-pwa:
+    name: WebGL, Offline PWA & Source Bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Dependencies, Test & Build Web Bundle
+        run: |
+          npm install --legacy-peer-deps
+          npx tsx --test src/game/rules.test.ts
+          npx vite build --base=./
+          mkdir -p artifacts-web
+          cd dist && zip -r ../artifacts-web/Sproutling-Grove-Guardian-3D-Web-PWA.zip . && cd ..
+          zip -r artifacts-web/Sproutling-Grove-Guardian-3D-Source-Project.zip \
+            src public .github package.json tsconfig.json vite.config.ts \
+            capacitor.config.ts electron-main.cjs electron-builder.yml index.html metadata.json .env.example
+
+      - name: Upload WebGL & Source Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sproutling-Grove-Guardian-3D-Web-PWA
+          path: artifacts-web/*.zip
+
+  # 2. Build Android APK & Google Play AAB
+  build-android:
+    name: Android APK & Google Play AAB
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Java JDK 21 for Android Gradle
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Build Web Bundle & Capacitor Android Project
+        env:
+          ADMOB_APP_ID: ${{ secrets.VITE_ADMOB_APP_ID || 'ca-app-pub-3940256099942544~3347511713' }}
+        run: |
+          npm install --legacy-peer-deps
+          npx vite build --base=./
+          rm -f capacitor.config.ts
+          cat > capacitor.config.json << 'EOF'
+          {
+            "appId": "com.hyn198911.sproutling3d",
+            "appName": "Sproutling: Grove Guardian 3D",
+            "webDir": "dist",
+            "bundledWebRuntime": false
+          }
+          EOF
+          npm install --legacy-peer-deps @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
+          npx cap add android
+          npx cap sync android
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          sed -i "s|</application>|  <meta-data android:name=\"com.google.android.gms.ads.APPLICATION_ID\" android:value=\"${ADMOB_APP_ID}\"/>\n  </application>|g" "$MANIFEST"
+
+      - name: Assemble Android APK and AAB via Gradle
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug bundleRelease --no-daemon
+
+      - name: Collect Android Binaries
+        run: |
+          mkdir -p artifacts-android
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts-android/Sproutling-Grove-Guardian-3D-Android.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts-android/Sproutling-Grove-Guardian.apk
+          if [ -f "android/app/build/outputs/bundle/release/app-release.aab" ]; then
+            cp android/app/build/outputs/bundle/release/app-release.aab artifacts-android/Sproutling-Grove-Guardian-3D-PlayStore.aab
+          fi
+
+      - name: Upload Android APK & AAB Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sproutling-Grove-Guardian-3D-Android-APK-AAB
+          path: artifacts-android/*
+
+  # 3. Build Desktop Executables (Windows EXE NSIS + Portable + ZIP, Linux AppImage/DEB/tar.gz, macOS DMG/ZIP)
+  build-desktop:
+    name: Desktop Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform_flag: --win
+            artifact_name: Sproutling-Grove-Guardian-3D-Windows-EXE
+          - os: ubuntu-latest
+            platform_flag: --linux
+            artifact_name: Sproutling-Grove-Guardian-3D-Linux-AppImage
+          - os: macos-latest
+            platform_flag: --mac
+            artifact_name: Sproutling-Grove-Guardian-3D-macOS-DMG
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build Web Bundle & Package Native Desktop App
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npm install --legacy-peer-deps
+          npm install --no-save --legacy-peer-deps electron@33.2.0 electron-builder@25.1.8
+          npx vite build --base=./
+          npx electron-builder ${{ matrix.platform_flag }} --config electron-builder.yml --publish never
+
+      - name: Upload Desktop Executables
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            release-desktop/*.exe
+            release-desktop/*.AppImage
+            release-desktop/*.deb
+            release-desktop/*.tar.gz
+            release-desktop/*.dmg
+            release-desktop/*.zip
+
+  # 4. Publish All Platform Binaries to GitHub Releases
+  publish-github-release:
+    name: Publish All Platforms to GitHub Releases
+    needs: [build-web-pwa, build-android, build-desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine Release Tag
+        id: rel_tag
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == v* ]]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=v1.7.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download All Built Platform Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-release-binaries
+          merge-multiple: true
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.rel_tag.outputs.tag }}
+          name: "Sproutling: Grove Guardian 3D ${{ steps.rel_tag.outputs.tag }} (Windows EXE · Android APK/AAB · Linux · macOS · Web)"
+          body: |
+            ### 🌿 Sproutling: Grove Guardian 3D — Full Multi-Platform Release (${{ steps.rel_tag.outputs.tag }})
+            - **Elemental Parry Infusion & 3D Spatial Audio**: Deflecting Forest Puffers, Frost Sprites, Sun Rollers, and Void Bosses triggers custom colored shattering crystal particles, 3D spatialized elemental chimes/embers/resonances, elemental Riposte counter buffs, and weight-scaled screen-shake + hit-stop.
+            - **Maximum 3D Graphics & Multi-Part Stage Centerpieces**: Boosted Eco, Balanced, High, and Ultra quality presets (up to 4096×4096 shadows, 112×112 procedural terrain, 1,400 grass blades, 160 ferns, 68 crystal clusters, and detailed multi-part 3D centerpieces across all 5 mission modes).
+            - **Non-Combative 'Sprout-Buddy' Pet Companion & Dynamic Biome Ambient Soundscapes**.
+            - **Available Downloads Below**:
+              - 🪟 **Windows (`.exe` & `.zip`)**: NSIS Setup Installer `.exe`, Standalone Portable `.exe`, and `.zip`
+              - 🤖 **Android (`.apk` & `.aab`)**: Direct-install Android `.apk` & Google Play Store `.aab`
+              - 🐧 **Linux (`.AppImage`, `.deb`, `.tar.gz`)**: Native Linux desktop packages
+              - 🍎 **macOS (`.dmg` & `.zip`)**: macOS application bundles
+              - 🌐 **WebGL / Offline PWA & Source (`.zip`)**: Ready-to-host static WebGL build & full source project archive
+          files: |
+            all-release-binaries/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
