@@ -1,3 +1,11 @@
+## Verified release status / وضعیت واقعی انتشار
+
+The full multi-platform release [`v1.7.6`](https://github.com/HYNazism/Gemini/releases/tag/v1.7.6) includes Windows setup/portable `.exe` files, Android `.apk` and Google Play `.aab`, Linux `.AppImage`/`.deb`/`.tar.gz`, macOS `.dmg`/`.zip`, and Web/PWA plus source `.zip` archives. The separate Android-only release [`v1.7.27`](https://github.com/HYNazism/Gemini/releases/tag/v1.7.27) contains APK/AAB assets only; it has no desktop or web packages. The current `package.json` version is `1.7.0`, and desktop asset filenames in release `v1.7.6` use `1.7.0`; the release tag is not the packaged desktop version.
+
+انتشار کامل چندسکویی [`v1.7.6`](https://github.com/HYNazism/Gemini/releases/tag/v1.7.6) شامل فایل‌های نصاب/قابل‌حمل Windows (`.exe`)، فایل نصب Android (`.apk`) و بستهٔ Google Play (`.aab`)، بسته‌های Linux (`.AppImage`، `.deb` و `.tar.gz`)، بسته‌های macOS (`.dmg` و `.zip`) و ZIP وب/PWA و سورس است. انتشار جداگانهٔ Android با برچسب [`v1.7.27`](https://github.com/HYNazism/Gemini/releases/tag/v1.7.27) فقط APK/AAB دارد و بستهٔ دسکتاپ یا وب ندارد. نسخهٔ فعلی `package.json` برابر `1.7.0` است و نام فایل‌های دسکتاپ انتشار `v1.7.6` نیز `1.7.0` را نشان می‌دهد؛ شمارهٔ تگ با نسخهٔ داخل بستهٔ دسکتاپ یکی نیست.
+
+---
+
 ## English
 
 Sproutling: Grove Guardian 3D is a browser-based 3D action adventure built with React, TypeScript, Vite, and Three.js. GitHub Actions provides desktop and Android packaging.
