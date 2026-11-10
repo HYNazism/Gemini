@@ -4,6 +4,10 @@ on:
   push:
     branches: [ main, master ]
     tags: [ 'v*' ]
+    paths-ignore:
+      - 'README.md'
+      - '.github/workflows/multi-platform-release.yml'
+      - '.github/workflows/android-apk-release.yml'
   workflow_dispatch:
     inputs:
       release_tag:
