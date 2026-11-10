@@ -1,3 +1,44 @@
+## English
+
+Sproutling: Grove Guardian 3D is a browser-based 3D action adventure built with React, TypeScript, Vite, and Three.js. GitHub Actions provides desktop and Android packaging.
+
+### Downloads
+
+- [GitHub Releases](https://github.com/HYNazism/Gemini/releases)
+- [Multi-platform build workflow](https://github.com/HYNazism/Gemini/actions/workflows/multi-platform-release.yml)
+
+Depending on the release, assets may include:
+
+- **Windows:** NSIS installer `.exe`, portable `.exe`, and possibly `.zip`
+- **Android:** directly installable `.apk` and `.aab` for Google Play
+- **Linux:** `.AppImage`, `.deb`, and `.tar.gz`
+- **macOS:** `.dmg` and `.zip`
+- **Web:** PWA bundle and source archive (`.zip`)
+
+The Windows installer/portable app and Android APK are installable packages. A web or source ZIP is not an installer. Assets can vary by release, so check the files attached to the specific version before downloading.
+
+### Local development
+
+Requirements: Node.js 22 and npm.
+
+```bash
+git clone https://github.com/HYNazism/Gemini.git
+cd Gemini
+npm install --legacy-peer-deps
+npm run dev
+```
+
+Run TypeScript checks and build the web app with:
+
+```bash
+npm run lint
+npm run build
+```
+
+`npm run lint` performs TypeScript checks. GitHub Actions builds desktop packages and APK/AAB files. The workflow runs on pushes to `main`/`master`, version tags, or a manual dispatch. Verify successful jobs and release assets after each run.
+
+---
+
 
 
 ---
