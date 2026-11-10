@@ -1,25 +1,29 @@
-# Sproutling: Grove Guardian 3D
 
-A browser-based 3D action-adventure built with React, TypeScript, Vite, and Three.js. The project includes an installable web build and automated desktop and Android packaging.
 
-## Downloads
+---
 
-- [GitHub Releases](https://github.com/HYNazism/Gemini/releases)
-- [Multi-platform build workflow](https://github.com/HYNazism/Gemini/actions/workflows/multi-platform-release.yml)
+## فارسی
 
-Release assets may include:
+«Sproutling: Grove Guardian 3D» یک ماجراجویی اکشن سه‌بعدیِ مبتنی بر مرورگر است که با React، TypeScript، Vite و Three.js ساخته شده و گردش‌کارهای خودکار برای بسته‌بندی دسکتاپ و Android دارد.
 
-- **Windows:** NSIS installer `.exe`, portable `.exe`, and optional `.zip`
-- **Android:** installable `.apk` and Google Play `.aab`
-- **Linux:** `.AppImage`, `.deb`, and `.tar.gz`
-- **macOS:** `.dmg` and `.zip`
-- **Web:** static PWA bundle and source archives (`.zip`)
+### دریافت نسخه‌ها
 
-The Windows installer/portable executable and Android APK are direct app packages. Web/source ZIP files are not installers. Asset availability can vary between releases, so check the files attached to the specific version before downloading.
+- [انتشارهای GitHub](https://github.com/HYNazism/Gemini/releases)
+- [گردش‌کار ساخت چندسکویی](https://github.com/HYNazism/Gemini/actions/workflows/multi-platform-release.yml)
 
-## Run locally
+دارایی‌های انتشار، بسته به نسخه، می‌توانند شامل این موارد باشند:
 
-Requirements: Node.js 22 and npm.
+- **Windows:** نصاب NSIS با پسوند `.exe`، نسخهٔ قابل‌حمل `.exe` و در صورت وجود فایل `.zip`
+- **Android:** فایل نصب مستقیم `.apk` و بستهٔ `.aab` برای Google Play
+- **Linux:** فایل‌های `.AppImage`، `.deb` و `.tar.gz`
+- **macOS:** فایل‌های `.dmg` و `.zip`
+- **وب:** باندل PWA و آرشیو سورس (`.zip`)
+
+نصاب/نسخهٔ قابل‌حمل Windows و APK فایل‌های نصب‌شدنی هستند. ZIP وب یا سورس، نصاب نیست. دارایی‌های هر Release ممکن است فرق کنند؛ پیش از دریافت، فهرست فایل‌های همان نسخه را بررسی کنید.
+
+### اجرای محلی
+
+پیش‌نیازها: Node.js 22 و npm.
 
 ```bash
 git clone https://github.com/HYNazism/Gemini.git
@@ -28,19 +32,17 @@ npm install --legacy-peer-deps
 npm run dev
 ```
 
-Useful project checks and web build:
+برای بررسی TypeScript و ساخت وب:
 
 ```bash
 npm run lint
 npm run build
 ```
 
-`npm run lint` performs TypeScript checking. The multi-platform GitHub Actions workflow builds desktop packages and Android APK/AAB files; use the release assets rather than the web bundle when you need an installable app.
+`npm run lint` بررسی TypeScript را اجرا می‌کند. گردش‌کار GitHub Actions بسته‌های دسکتاپ و فایل‌های APK/AAB را می‌سازد. برای نصب روی دستگاه از دارایی نصب‌شدنی Release استفاده کنید، نه ZIP وب.
 
-## Technologies
+### فناوری‌ها و انتشار
 
-React 19 · TypeScript · Vite 8 · Three.js · Capacitor · Electron
+React 19 · TypeScript · Vite 8 · Three.js · Capacitor · Electron.
 
-## Release automation
-
-The workflow runs for pushes to `main`/`master`, version tags, or a manual dispatch from **Actions**. Confirm that all build jobs succeed and verify the resulting assets on the Releases page before sharing a new version.
+گردش‌کار با push به `main`/`master`، تگ نسخه یا اجرای دستی از تب **Actions** اجرا می‌شود. پس از هر اجرا، موفقیت jobها و دارایی‌های صفحهٔ Releases را بررسی کنید.
